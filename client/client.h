@@ -219,8 +219,6 @@ void parse(char *s);
 void client_tick(void);
 
 int look(int x);
-int detect_cmd(int *w, int n, int face);
-void body_step(void *b, void *c, int mask, int lk, int cmd);
 void window(unsigned i, int *w);
 
 #endif
