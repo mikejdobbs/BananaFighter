@@ -35,29 +35,32 @@ int num(char **s)
 
 int look(int x)
 {
-    (void)x;
-    return 0;
-}
-
-int detect_cmd(int *w, int n, int face)
-{
-    (void)w;
-    (void)n;
-    (void)face;
-    return 0;
-}
-
-void body_step(void *b, void *c, int mask, int lk, int cmd)
-{
-    (void)b;
-    (void)c;
-    (void)mask;
-    (void)lk;
-    (void)cmd;
+    int b = -1;
+    for (int i = 0; i < nf; i++)
+        if (F[i].slot != me && F[i].lives > 0 && F[i].x >= 0 &&
+            (b < 0 || abs(F[i].x - x) < abs(F[b].x - x)))
+            b = i;
+    return b < 0 ? 0 : F[b].x >= x ? 1 : -1;
 }
 
 void window(unsigned i, int *w)
 {
-    (void)i;
-    (void)w;
+    for (int k = 0; k < CMD_WIN; k++) {
+        int idx = (int)i - (CMD_WIN - 1 - k);
+        w[k] = idx >= 0 ? hist[idx % HIST] : 0;
+    }
+}
+
+int detect_cmd(int *w, int n, int face)
+{
+    return motion(w, n, face, "bBdDf") ? CMD_HCF : motion(w, n, face, "dDf") ? CMD_QCF : CMD_NONE;
+}
+
+void body_step(void *b, void *c, int mask, int lk, int cmd)
+{
+    (void) b;
+    (void) c;
+    (void) mask;
+    (void) lk;
+    (void) cmd;
 }
