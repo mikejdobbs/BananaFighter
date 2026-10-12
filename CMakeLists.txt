@@ -16,7 +16,13 @@ target_compile_options(server PRIVATE ${WARNINGS})
 
 find_package(SDL3 CONFIG)
 if(SDL3_FOUND)
-  add_executable(client client.c)
+  add_executable(client
+    client/main.c
+    client/audio.c
+    client/input.c
+    client/network.c
+    client/render.c)
+  target_include_directories(client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} client)
   target_compile_options(client PRIVATE ${WARNINGS})
   target_link_libraries(client PRIVATE SDL3::SDL3)
   # sprites and sounds are loaded from <exe dir>/..., falling back to the current directory
