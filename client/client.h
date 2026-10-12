@@ -29,6 +29,7 @@ enum {
   ROW_BLOCK,
   ROW_HURT,
   ROW_FLY,
+  ROW_CROUCH,
   ROW_MOVE
 };                /* 11 move rows follow */
 #define IDLE_FR 6 /* frames in each looping row */

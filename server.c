@@ -219,7 +219,7 @@ static void ko(Player *v)
 static int hurt_top(const Player *v, const Character *vc)
 {
     int h = vc->h;
-    if (v->body.y == 0) h = h; /* crouch flag removed: keep full height when grounded */
+    if (v->body.crouch && v->body.y == 0) h = h / 2;    /* crouching: half-height hurtbox dodges high attacks */
     return v->body.y + h;
 }
 
@@ -513,7 +513,7 @@ static void send_state(int v)
             // hide invisible players to everyone but themself
             int hide = p->body.invis && k != v;
 
-            int st = p->body.stun ? -2 : p->body.block ? -3 : p->body.move >= 0 ? p->body.move : p->body.flying ? -4 : -1;
+            int st = p->body.stun ? -2 : p->body.block ? -3 : p->body.move >= 0 ? p->body.move : p->body.flying ? -4 : p->body.crouch ? -5 : -1;
             n += snprintf(buf + n, sizeof buf - n, " P %d %d %d %d %d %d %d %d %d %d", k, p->s_character,
                           hide ? -1 : p->body.x, hide ? -1 : p->body.y, p->hp, p->lives, p->body.meter,
                           p->body.face, hide ? -1 : st, p->body.invis > 0);
@@ -540,7 +540,7 @@ static void send_state(int v)
         // show explosions
         for (int k = 0; k < MAXBOOM; k++)
             if (explosions[k].on && n < (int)sizeof buf - 48)
-                n += snprintf(buf + n, sizeof buf - 48, " X %d %d %d", explosions[k].x, explosions[k].y, explosions[k].t);
+                n += snprintf(buf + n, sizeof buf - n, " X %d %d %d", explosions[k].x, explosions[k].y, explosions[k].t);
     }
 
     if (n > (int)sizeof buf - 2) n = (int)sizeof buf - 2;     /* snprintf reports the untruncated length */
