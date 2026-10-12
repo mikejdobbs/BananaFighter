@@ -56,7 +56,7 @@ static Fig eff(int i)
     Fig f = F[i];
     if (predicting && f.slot == me) {
         f.x = pb.x; f.y = pb.y; f.face = pb.face; f.invis = pb.invis > 0;
-        f.st = pb.stun ? -2 : pb.block ? -3 : pb.move >= 0 ? pb.move : pb.flying ? -4 : -1;
+        f.st = pb.stun ? -2 : pb.block ? -3 : pb.move >= 0 ? pb.move : pb.flying ? -4 : pb.crouch ? -5 : -1;
     }
     return f;
 }
@@ -108,6 +108,7 @@ static void pick(const Fig *f, int *row, int *col)
     if (f->st == -2) { *row = ROW_HURT; *col = a->t < 3 ? 0 : a->t < 8 ? 1 : 2; }
     else if (f->st == -3) { *row = ROW_BLOCK; *col = a->t < 4 ? 0 : 1; }
     else if (f->st == -4) { *row = ROW_FLY; *col = (aclk / 2) % FLY_FR; }
+    else if (f->st == -5) { *row = ROW_BLOCK; *col = 1; }
     else if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
         *row = ROW_MOVE + move_row(&c->moves[f->st]);
         *col = move_frame(&c->moves[f->st], a->t);
@@ -161,7 +162,7 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
 static void draw_box(const Fig *f)                  /* fallback when a sheet is missing */
 {
     const Character *c = &chars[f->ch];
-    float w = c->w * SCALE, h = c->h * SCALE;
+    float w = c->w * SCALE, h = c->h * SCALE * (f->st == -5 ? 0.55f : 1.0f);
     float x = f->x * SCALE - w / 2, y = GROUND - f->y * SCALE - h;
     int a = f->invis ? 90 : 255;
     const Uint8 *col = pal[f->slot % MAX_PLAYERS];
@@ -189,7 +190,7 @@ static void draw_fighter(const Fig *f)
     box(f->x * SCALE - shw / 2, GROUND - 3, shw, 6, 0, 0, 0, (f->invis ? 30 : 80) * (lift > 300 ? 0.5f : 1.0f));
     if (tex[f->ch]) draw_sprite(f, tex[f->ch]); else draw_box(f);
     if (show_boxes) {                               /* hitbox overlay */
-        float h = c->h * SCALE;
+        float h = c->h * SCALE * (f->st == -5 ? 0.55f : 1.0f);
         box(f->x * SCALE - sw / 2, GROUND - f->y * SCALE - h, sw, h, 255, 255, 255, 50);
     }
 }

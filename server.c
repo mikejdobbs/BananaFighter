@@ -216,6 +216,13 @@ static void ko(Player *v)
     }
 }
 
+static int hurt_top(const Player *v, const Character *vc)
+{
+    int h = vc->h;
+    if (v->body.y == 0) h = h; /* crouch flag removed: keep full height when grounded */
+    return v->body.y + h;
+}
+
 static void hurt(Player *a, Player *v, const Move *m, int dir)
 {
     Body *vb = &v->body;
@@ -287,7 +294,7 @@ static void explode(const Proj *j)
             continue;
 
         if (overlap(j->x - BOMB_R, j->x + BOMB_R, cy - BOMB_R, cy + BOMB_R,
-                    v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, v->body.y + vc->h))
+                    v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, hurt_top(v, vc)))
             hurt(&players[j->owner], v, j->m, v->body.x >= j->x ? 1 : -1);
     }
 }
@@ -303,7 +310,7 @@ static void melee(int i, const Move *m)
         const Character *vc = &chars[v->s_character];
         if (k == i || !fighting(v) || v->body.grace) continue;
         if (!overlap(lo(x0, x1), hi(x0, x1), p->body.y + m->y, p->body.y + m->y + m->h,
-                     v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, v->body.y + vc->h))
+                     v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, hurt_top(v, vc)))
             continue;
         if (!m->throw) {
             hurt(p, v, m, p->body.face);
@@ -427,7 +434,7 @@ static void update_projectiles(void)
             const Character *vc = &chars[v->s_character];
             if (k == j->owner || !fighting(v)) continue;
             if (overlap(j->x - PROJ_HALF, j->x + PROJ_HALF, j->y - PROJ_HALF, j->y + PROJ_HALF,
-                        v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, v->body.y + vc->h)) {
+                        v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y, hurt_top(v, vc))) {
                 if (j->bomb) explode(j);
                 else hurt(&players[j->owner], v, j->m, j->vx > 0 ? 1 : -1);
                 j->on = 0;
@@ -481,7 +488,7 @@ static void step(void)
 /* Select screen (TCP): "L {U slot char ready bot}..."   (bot = 0 for humans, else AI index + 1)
    Match (UDP): "S tick winner ack {P slot ch x y hp lives meter face state invis}... Q vx vy frame
            stun grace invis_ticks hit fuel {J owner x y}... {B owner x y}... {Z owner x vx}... {X x y t}..."
-   state: >= 0 attacking (move index), -1 idle, -2 stunned, -3 blocking, -4 flying.
+   state: >= 0 attacking (move index), -1 idle, -2 stunned, -3 blocking, -4 flying, -5 crouching.
    J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra state) lets the client
    resume simulation. Invisible opponents have x, y and state hidden. */
 static void send_state(int v)
@@ -533,7 +540,7 @@ static void send_state(int v)
         // show explosions
         for (int k = 0; k < MAXBOOM; k++)
             if (explosions[k].on && n < (int)sizeof buf - 48)
-                n += snprintf(buf + n, sizeof buf - n, " X %d %d %d", explosions[k].x, explosions[k].y, explosions[k].t);
+                n += snprintf(buf + n, sizeof buf - 48, " X %d %d %d", explosions[k].x, explosions[k].y, explosions[k].t);
     }
 
     if (n > (int)sizeof buf - 2) n = (int)sizeof buf - 2;     /* snprintf reports the untruncated length */
