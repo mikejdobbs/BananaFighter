@@ -379,9 +379,12 @@ static void draw_roster(void)
         int ch = p->ch >= 0 && p->ch < NCHARS ? p->ch : 0;
         const Uint8 *c = pal[p->slot % MAX_PLAYERS];
         float x = left + (i % ROSTER_COLS) * width, y = top + (i / ROSTER_COLS) * 36;
+        float card_w = width - 10, port = 28;              /* small portrait of their picked fighter */
 
-        box(x, y, width - 10, 31, 32, 35, 52, 255);
+        box(x, y, card_w, 31, 32, 35, 52, 255);
         box(x, y, 4, 31, c[0], c[1], c[2], 255);
+        box(x + card_w - port - 3, y + 1, port, port, 20, 20, 36, 255);
+        idle_portrait(ch, x + card_w - port - 3, y + 1, port, 1);
         text(x + 10, y + 4, "%cP%d  %-8.8s  %s", p->slot == me ? '>' : ' ', p->slot,
              chars[ch].name, p->ready ? "READY" : "PICKING");
         if (p->bot)
