@@ -39,7 +39,7 @@ static void joy_close(SDL_JoystickID id)
         }
 }
 
-static void pads_init(void)
+void pads_init(void)
 {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) { fprintf(stderr, "no gamepad support: %s\n", SDL_GetError()); return; }
@@ -52,7 +52,7 @@ static void pads_init(void)
     SDL_free(ids);
 }
 
-static int padmask(void)
+int padmask(void)
 {
     int m = 0;
     for (int i = 0; i < npads; i++) {
@@ -81,7 +81,7 @@ static int padmask(void)
     return m;
 }
 
-static int pad_edge(SDL_GamepadButton b)
+int pad_edge(SDL_GamepadButton b)
 {
     int d = 0;
     for (int i = 0; i < npads; i++)
@@ -91,7 +91,7 @@ static int pad_edge(SDL_GamepadButton b)
     return e;
 }
 
-static int keymask(void)
+int keymask(void)
 {
     const bool *ks = SDL_GetKeyboardState(NULL);
     int mask = 0;
@@ -100,7 +100,7 @@ static int keymask(void)
     return mask;
 }
 
-static void option_activate(int *quit)
+void option_activate(int *quit)
 {
     switch (options_item) {
     case 0: options_open = 0; break;
@@ -110,7 +110,7 @@ static void option_activate(int *quit)
     }
 }
 
-static void options_input(int edge, int confirm, int *quit)
+void options_input(int edge, int confirm, int *quit)
 {
     if (edge & IN_U) options_item = (options_item + 4 - 1) % 4;
     if (edge & IN_D) options_item = (options_item + 1) % 4;
