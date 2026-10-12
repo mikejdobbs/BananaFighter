@@ -33,7 +33,14 @@ static int hist[HIST];
 static char rb[4096];
 static int rl;
 
+static int udp_fd = -1;
+static unsigned long long token;
+static long long last_hello;
+static int last_tick = -1;
+
 static int num(char **s) { return (int)strtol(*s, s, 10); }
+static void udp_open(void);
+static void udp_hello(void);
 
 static int look(int x)                  /* direction of the nearest visible opponent */
 {
@@ -83,6 +90,12 @@ static void parse(char *s)
     char t = *s++;
 
     if (t == 'Y') { me = num(&s); return; }
+    if (t == 'U') {                                     /* "U token": credential for the UDP channel */
+        token = strtoull(s, NULL, 16);
+        udp_open();
+        udp_hello();
+        return;
+    }
     if (t == 'A') {                                     /* "A ai0 ai1 ..." */
         nai = 0;
         while (nai < MAXAI) {
@@ -96,7 +109,7 @@ static void parse(char *s)
         return;
     }
     if (t != 'L' && t != 'S') return;
-    if (phase != t) { sent = 0; predicting = 0; audio_reset(); }   /* new phase: restart numbering and sounds */
+    if (phase != t) { sent = 0; predicting = 0; audio_reset(); last_tick = -1; }   /* new phase: restart numbering and sounds */
     phase = t;
     nf = nl = ns = nb = nsh = nex = hasq = 0;
     if (t == 'S') { tick = num(&s); winner = num(&s); ack = (unsigned)num(&s); }
@@ -131,7 +144,57 @@ static void parse(char *s)
     if (t == 'S') { reconcile(); audio_snapshot(); }
 }
 
-int pump(void)                                      /* 0 = server closed the connection */
+/* ---- UDP gameplay channel: opened once the server's "U token" arrives over TCP ---- */
+static long long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static void udp_open(void)
+{
+    struct sockaddr_storage ss;
+    socklen_t sl = sizeof ss;
+    if (udp_fd >= 0) { close(udp_fd); udp_fd = -1; }
+    if (getpeername(fd, (struct sockaddr *)&ss, &sl) < 0) return;
+    int s = socket(ss.ss_family, SOCK_DGRAM, 0);
+    if (s < 0) return;
+    if (connect(s, (struct sockaddr *)&ss, sl) < 0) { close(s); return; }
+    fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK);
+    udp_fd = s;
+}
+
+static void udp_send(const char *b, int n)
+{
+    if (udp_fd >= 0 && n > 0) send(udp_fd, b, n, 0);
+}
+
+static void udp_hello(void)
+{
+    char b[64];
+    udp_send(b, snprintf(b, sizeof b, "H %d %llx", me, token));
+}
+
+static void udp_drain(void)
+{
+    char pkt[2048];
+    for (int iter = 0; udp_fd >= 0 && iter < 64; iter++) {
+        ssize_t n = recv(udp_fd, pkt, sizeof pkt - 1, 0);
+        if (n < 0) return;
+        pkt[n] = 0;
+        char *nl = strchr(pkt, '\n');
+        if (nl) *nl = 0;
+        if (pkt[0] != 'S') continue;
+        char *p = pkt + 1;
+        int t = num(&p);
+        if (t <= last_tick && phase == 'S') continue;   /* stale or duplicate datagram */
+        parse(pkt);
+        last_tick = t;
+    }
+}
+
+static int pump_tcp(void)
 {
     for (;;) {
         ssize_t n = recv(fd, rb + rl, sizeof rb - rl - 1, 0);
@@ -148,6 +211,17 @@ int pump(void)                                      /* 0 = server closed the con
         }
         if (rl >= (int)sizeof rb - 1) rl = 0;
     }
+}
+
+int pump(void)                                      /* 0 = server closed the connection */
+{
+    int ok = pump_tcp();
+    if (udp_fd >= 0 && token) {
+        long long t = now_ms();
+        if (t - last_hello >= 500) { udp_hello(); last_hello = t; }   /* keepalive, also opens the server's path to us */
+    }
+    udp_drain();
+    return ok;
 }
 
 void sendf(const char *fmt, ...)
@@ -190,7 +264,15 @@ void client_tick(void)
     hist[sent % HIST] = mask;
     window(sent, w);
     mycmd = detect_cmd(w, CMD_WIN, lk ? lk : pb.face);
-    sendf("I %d\n", mask);
+    {   /* "I slot token seq m0 m1 ...": every input the server hasn't acked, newest last */
+        char b[512];
+        unsigned a = ack > sent ? sent : ack;
+        if (sent + 1 - a > 32) a = sent + 1 - 32;
+        int n = snprintf(b, sizeof b, "I %d %llx %u", me, token, a);
+        for (unsigned i = a; i <= sent && n < (int)sizeof b - 16; i++)
+            n += snprintf(b + n, sizeof b - n, " %d", hist[i % HIST]);
+        udp_send(b, n);
+    }
     body_step(&pb, &chars[pch], mask, lk, mycmd);
     sent++;
 }
