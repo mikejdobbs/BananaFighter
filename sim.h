@@ -1,4 +1,5 @@
 /* sim.h - deterministic per-fighter step shared by server and client */
+
 #ifndef SIM_H
 #define SIM_H
 
@@ -56,8 +57,9 @@ static inline int move_row(const Move *m)
     return m->proj_speed ? 6 : 7;
 }
 
-/* in: button/direction mask. cmd: motion command read from the recent input history. */
-static inline int body_step(Body *b, const Character *c, int in, int look, int cmd)
+/* in: button/direction mask. cmd: motion command read from the recent input history.
+   nearfoe: within throw range of the nearest opponent (lets a plain heavy punch become a throw). */
+static inline int body_step(Body *b, const Character *c, int in, int look, int cmd, int nearfoe)
 {
     int ev = 0;
 
@@ -103,6 +105,7 @@ static inline int body_step(Body *b, const Character *c, int in, int look, int c
                     const Move *m = &c->moves[k];
                     if ((pass == 0) != (m->cmd != 0) || (m->air != 0) != airborne) continue;
                     if (!(in & m->input) || b->meter < m->cost || (m->cmd && m->cmd != cmd)) continue;
+                    if (m->throw && !nearfoe) continue;    /* a throw only comes out within grab range */
                     b->move = k; b->frame = 0; b->hit = 0; b->flying = 0;
                     b->meter -= m->cost;
                     b->invis = m->invis;

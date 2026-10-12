@@ -52,6 +52,16 @@ static int look(int x)                  /* direction of the nearest visible oppo
     return b < 0 ? 0 : F[b].x >= x ? 1 : -1;
 }
 
+static int near(int x)                  /* within throw range of the nearest visible opponent? */
+{
+    int b = -1;
+    for (int i = 0; i < nf; i++)
+        if (F[i].slot != me && F[i].lives > 0 && F[i].x >= 0 &&
+            (b < 0 || abs(F[i].x - x) < abs(F[b].x - x)))
+            b = i;
+    return b >= 0 && abs(F[b].x - x) <= THROW_RANGE;
+}
+
 /* The CMD_WIN inputs ending at input number i, oldest first: what the server sees as history. */
 static void window(unsigned i, int *w)
 {
@@ -78,7 +88,7 @@ static void reconcile(void)
     for (unsigned i = a; i < sent; i++) {
         int w[CMD_WIN], lk = look(b.x);
         window(i, w);
-        body_step(&b, &chars[f->ch], hist[i % HIST], lk, detect_cmd(w, CMD_WIN, lk ? lk : b.face));
+        body_step(&b, &chars[f->ch], hist[i % HIST], lk, detect_cmd(w, CMD_WIN, lk ? lk : b.face), near(b.x));
     }
     pb = b;
     pch = f->ch;
@@ -273,6 +283,6 @@ void client_tick(void)
             n += snprintf(b + n, sizeof b - n, " %d", hist[i % HIST]);
         udp_send(b, n);
     }
-    body_step(&pb, &chars[pch], mask, lk, mycmd);
+    body_step(&pb, &chars[pch], mask, lk, mycmd, near(pb.x));
     sent++;
 }

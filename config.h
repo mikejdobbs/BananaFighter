@@ -11,6 +11,7 @@
 #define HITSTUN       12
 #define THROW_STUN    30        /* ticks a thrown victim is helpless */
 #define THROW_LIFT    20        /* upward launch speed of a throw */
+#define THROW_RANGE   70        /* close enough to grab: heavy punch becomes a throw, beating block */
 #define BLOCK_PCT     10        /* % of damage taken while blocking */
 #define METER_MAX     100       /* super meter: +dmg/4 dealt, +dmg/8 taken */
 #define RESPAWN_GRACE 90        /* invulnerable ticks after losing a life */
@@ -37,7 +38,7 @@
 #define BOOM_TICKS    14        /* how long the explosion effect lasts */
 #define MAXBOOM       16
 
-/* Street Fighter II-style input bits. The client sends raw directions and six attack buttons.
+/* The client sends raw directions and six attack buttons.
    Super moves use a command sequence plus a final button, not a dedicated super button. */
 enum { IN_L = 1, IN_R = 2, IN_U = 4, IN_D = 8,
        IN_LP = 16, IN_MP = 32, IN_HP = 64,
@@ -85,6 +86,7 @@ typedef struct {
 /* Edit these tables, then rebuild: DWM-style game configuration. */
 static const Character chars[] = {
     { .name = "Ken", .hp = 1000, .lives = 3, .speed = 6, .jump = 28, .w = 62, .h = 158, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="jab",       .input=IN_LP, .startup=3,  .active=2, .recover=6,  .dmg=25,  .kb=5,  .reach=43,  .y=91, .h=24 },
         { .name="strong",    .input=IN_MP, .startup=5,  .active=3, .recover=10, .dmg=48,  .kb=10, .reach=57,  .y=89, .h=30 },
         { .name="fierce",    .input=IN_HP, .startup=8,  .active=4, .recover=16, .dmg=82,  .kb=18, .reach=67,  .y=85, .h=38 },
@@ -97,6 +99,7 @@ static const Character chars[] = {
         { .name="shoryuken", .input=IN_HP,.cmd=CMD_HCF, .startup=5, .active=5, .recover=24, .dmg=130,.kb=30,.reach=50,.y=41,.h=123,.cost=50 },
     }},
     { .name = "Tank", .hp = 1400, .lives = 3, .speed = 3, .jump = 22, .w = 74, .h = 172, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="low jab",   .input=IN_LP, .startup=4,  .active=2, .recover=7,  .dmg=32,  .kb=6,  .reach=37, .y=77,  .h=23 },
         { .name="hammer",    .input=IN_MP, .startup=7,  .active=3, .recover=13, .dmg=65,  .kb=14, .reach=51, .y=81,  .h=41 },
         { .name="slam",      .input=IN_HP, .startup=11, .active=4, .recover=22, .dmg=118, .kb=24, .reach=58, .y=91,  .h=56 },
@@ -109,6 +112,7 @@ static const Character chars[] = {
         { .name="earthquake",.input=IN_HK,.cmd=CMD_HCF,.startup=22,.active=5,.recover=38, .dmg=280,.kb=125,.reach=140,.y=0,.h=91,.cost=75 },
     }},
     { .name = "Ninja", .hp = 800, .lives = 3, .speed = 8, .jump = 32, .w = 56, .h = 150, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="quick hand",.input=IN_LP, .startup=2, .active=2,.recover=5, .dmg=20,.kb=4,.reach=47,.y=75,.h=22 },
         { .name="palm",      .input=IN_MP, .startup=4, .active=3,.recover=8, .dmg=38,.kb=8,.reach=58,.y=75,.h=30 },
         { .name="blade hand",.input=IN_HP, .startup=6, .active=3,.recover=12,.dmg=62,.kb=14,.reach=73,.y=70,.h=40 },
@@ -122,6 +126,7 @@ static const Character chars[] = {
         { .name="shadow storm",.input=IN_HP,.cmd=CMD_HCF,.startup=12,.active=4,.recover=30,.dmg=190,.kb=55,.reach=146,.y=20,.h=120,.cost=65 },
     }},
     { .name = "Monkey", .hp = 1800, .lives = 5, .speed = 2, .jump = 16, .w = 74, .h = 165, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="swat",      .input=IN_LP,.startup=6,.active=2,.recover=10,.dmg=40,.kb=8,.reach=41,.y=70,.h=29 },
         { .name="palm",      .input=IN_MP,.startup=9,.active=3,.recover=16,.dmg=70,.kb=15,.reach=50,.y=68,.h=47 },
         { .name="pound",     .input=IN_HP,.startup=13,.active=4,.recover=24,.dmg=108,.kb=24,.reach=58,.y=58,.h=63 },
@@ -130,10 +135,11 @@ static const Character chars[] = {
         { .name="ape kick",  .input=IN_HK,.startup=13,.active=4,.recover=24,.dmg=115,.kb=26,.reach=65,.y=17,.h=60 },
         { .name="air swat",  .input=IN_P, .air=1, .startup=5, .active=14, .recover=8, .dmg=80, .kb=14, .reach=41, .y=24,  .h=53 },
         { .name="ape drop",  .input=IN_K, .air=1, .startup=6, .active=14, .recover=8, .dmg=95, .kb=16, .reach=47, .y=-49, .h=78 },
-        { .name="throw",     .input=IN_HP,.cmd=CMD_QCF,.startup=9,.active=3,.recover=30,.dmg=155,.kb=84,.reach=41,.y=19,.h=102,.throw=1 },
+        { .name="command grab",.input=IN_HP,.cmd=CMD_QCF,.startup=9,.active=3,.recover=30,.dmg=155,.kb=84,.reach=41,.y=19,.h=102,.throw=1 },
         { .name="smash",     .input=IN_HK,.cmd=CMD_HCF,.startup=25,.active=4,.recover=40,.dmg=300,.kb=140,.reach=115,.y=0,.h=155,.cost=METER_MAX },
     }},
     { .name = "Alien", .hp = 700, .lives = 3, .speed = 9, .jump = 34, .w = 54, .h = 138, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="probe",     .input=IN_LP,.startup=2,.active=2,.recover=5,.dmg=16,.kb=3,.reach=42,.y=72,.h=28 },
         { .name="ray jab",   .input=IN_MP,.startup=3,.active=2,.recover=7,.dmg=25,.kb=5,.reach=51,.y=69,.h=38 },
         { .name="blaster",   .input=IN_HP,.startup=5,.active=3,.recover=10,.dmg=42,.kb=9,.reach=63,.y=60,.h=48 },
@@ -146,6 +152,7 @@ static const Character chars[] = {
         { .name="mothership",.input=IN_HP,.cmd=CMD_HCF,.startup=18,.active=1,.recover=40,.dmg=70,.kb=60,.ship=6,.cost=40 },
     }},
     { .name = "Squirrel", .hp = 750, .lives = 3, .speed = 8, .jump = 30, .w = 58, .h = 142, .fly = 3, .fuel = 110, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="paw",       .input=IN_LP,.startup=2,.active=2,.recover=5,.dmg=18,.kb=4,.reach=37,.y=50,.h=28 },
         { .name="claw",      .input=IN_MP,.startup=3,.active=3,.recover=7,.dmg=30,.kb=6,.reach=50,.y=47,.h=44 },
         { .name="tail slap", .input=IN_HP,.startup=6,.active=3,.recover=11,.dmg=52,.kb=12,.reach=74,.y=44,.h=54 },

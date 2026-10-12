@@ -11,17 +11,40 @@ endif()
 
 set(WARNINGS -Wall -Wextra)
 
-add_executable(server server.c)
+# Headers shared by the client and server (sim.h is used by both; listed so they show up in Xcode)
+set(SHARED_HEADERS
+  sim.h
+  config.h)
+
+set(SERVER_HEADERS
+  server/server.h
+  server/ai.h)
+
+add_executable(server
+  server/main.c
+  server/util.c
+  server/state.c
+  server/combat.c
+  server/sim.c
+  server/net.c
+  ${SERVER_HEADERS}
+  ${SHARED_HEADERS})
+target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} server)
 target_compile_options(server PRIVATE ${WARNINGS})
 
 find_package(SDL3 CONFIG)
 if(SDL3_FOUND)
+  # client headers: picked up automatically, re-globbed when files are added
+  file(GLOB CLIENT_HEADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/client/*.h)
+
   add_executable(client
     client/main.c
     client/audio.c
     client/input.c
     client/network.c
-    client/render.c)
+    client/render.c
+    ${CLIENT_HEADERS}
+    ${SHARED_HEADERS})
   target_include_directories(client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} client)
   target_compile_options(client PRIVATE ${WARNINGS})
   target_link_libraries(client PRIVATE SDL3::SDL3)
