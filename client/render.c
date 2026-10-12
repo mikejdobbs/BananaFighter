@@ -182,7 +182,7 @@ static void draw_box(const Fig *f)                  /* fallback when a sheet is 
 static void draw_fighter(const Fig *f)
 {
     const Character *c = &chars[f->ch];
-    if (f->x < 0) return;                           /* hidden by the server (invisible foe) */
+    if (f->x < 0 || f->lives <= 0) return;          /* hidden by the server, or eliminated: KO'd out of the match */
     float sw = c->w * SCALE;
     float lift = f->y * SCALE;                      /* shadow shrinks and fades as you rise */
     float shw = sw * (1.0f - lift / 600.0f);
