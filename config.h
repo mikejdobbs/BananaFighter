@@ -4,6 +4,7 @@
 
 #define PORT          7777
 #define TICK_HZ       60
+#define MAX_UDP_GAP 50  /* max possible gap between UDP framtes */
 #define MAX_PLAYERS          10        /* max connected players (humans + bots) */
 #define MIN_PLAYERS   2         /* needed to start a match */
 #define STAGE_W       1400

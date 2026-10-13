@@ -79,18 +79,23 @@ static void push_input(Player *player, int mask)
 
 /* Inputs arrive as seq, seq+1, ... and may be duplicated, late or missing. Skip ones already
    seen; for a gap, repeat the last input so the numbering (and the ack) stays aligned. */
-static void apply_udp_inputs(Player *p, int seq, const int *m, int count)
+static void apply_udp_inputs(Player *player, uint32_t seq, const int *inputs, int count)
 {
     for (int j = 0; j < count; j++) {
-        int s = seq + j;
-        if (s < p->next_seq) continue;                      /* duplicate from redundancy */
-        int gap = s - p->next_seq;
+        
+        uint32_t s = (uint32_t)seq + j;
+        int32_t d = (int32_t)(s - player->next_seq);   /* signed distance */
+        if (d < 0) continue;                           /* duplicate */
+        int gap = d;
+        if (gap > MAX_UDP_GAP) continue;   /* or drop the player */
+        
         int fill = gap < INPUT_QMAX ? gap : INPUT_QMAX;
-        for (int g = 0; g < fill; g++) push_input(p, p->last_in);
-        p->num_ack_by_server += gap - fill;                 /* a huge jump: count skipped inputs as consumed */
-        push_input(p, m[j]);
-        p->last_in = m[j];
-        p->next_seq = s + 1;
+        for (int g = 0; g < fill; g++) push_input(player, player->last_in);
+        
+        player->num_ack_by_server += gap - fill;                 /* a huge jump: count skipped inputs as consumed */
+        push_input(player, inputs[j]);
+        player->last_in = inputs[j];
+        player->next_seq = s + 1;
     }
 }
 
@@ -107,7 +112,6 @@ static void handle_line(int player_num, char *line)
         player->s_character = (v >= 0 && v < NCHARS) ? v : 0;   /* J <char>: hover/pick; locked-in fighters can't change */
     else if (line[0] == 'R' && phase == LOBBY && !player->in_match)
         player->ready ^= 1;
-    /* "I" inputs now arrive over UDP: see read_udp() */
 }
 
 void read_client(int i)
@@ -139,25 +143,33 @@ void read_udp(void)
         ssize_t n = recvfrom(udp_fd, pkt, UDP_PKT_MAX, 0, (struct sockaddr *)&from, &fl);
         if (n < 0) return;                                  /* EAGAIN: socket drained */
         pkt[n] = 0;
-
+        
         char kind;
         int slot, used = 0;
         unsigned long long tok;
         if (sscanf(pkt, "%c %d %llx %n", &kind, &slot, &tok, &used) != 3) continue;
+        
         if (slot < 0 || slot >= MAX_PLAYERS) continue;
-
-        Player *p = &players[slot];
-        if (p->fd < 0 || p->token == 0 || tok != p->token) continue;    /* unknown or forged */
-
-        p->udp_addr = from;                                 /* follows NAT rebinding */
-        p->udp_ok = 1;
-        p->last_udp_ms = now_ms();
-
-        if (kind != 'I' || phase != PLAY || !p->in_match || used == 0) continue;
-
+        
+        Player *player = &players[slot];
+        if (player->fd < 0 || player->token == 0 || tok != player->token) continue;    /* unknown or forged */
+        
+        player->udp_addr = from;                                 /* follows NAT rebinding */
+        player->udp_ok = 1;
+        player->last_udp_ms = now_ms();
+        
+        if (kind != 'I' || phase != PLAY || !player->in_match || used == 0) continue;
+        
         char *s = pkt + used, *e;
-        int seq = (int)strtol(s, &e, 10), m[UDP_MAX_INPUTS], count = 0;
-        if (e == s) continue;
+        while (*s == ' ' || *s == '\t') s++;
+        if (*s == '-') continue;
+        
+        errno = 0;
+        unsigned long long v = strtoull(s, &e, 10);
+        if (e == s || errno == ERANGE || v > UINT32_MAX) continue;
+        uint32_t seq = (uint32_t)v;
+        
+        int m[UDP_MAX_INPUTS], count = 0;
         s = e;
         while (count < UDP_MAX_INPUTS) {
             long val = strtol(s, &e, 10);
@@ -165,7 +177,7 @@ void read_udp(void)
             m[count++] = (int)val;
             s = e;
         }
-        apply_udp_inputs(p, seq, m, count);
+        apply_udp_inputs(player, seq, m, count);
     }
 }
 
