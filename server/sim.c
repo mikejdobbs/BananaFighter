@@ -3,22 +3,27 @@
 /* Build the plugin's view of the world and ask it what to press. */
 static int think(int i)
 {
-    Player *p = &players[i];
-    int t = nearest(i);
-    p->cmd = 0;
-    if (t < 0) return 0;
-    AiView v = { .me = &chars[p->s_character], .foe = &chars[players[t].s_character], .self = &p->body, .tgt = &players[t].body,
-                 .rng = &p->rng, .shot = 9999 };
-    v.dx = players[t].body.x - p->body.x;
-    if (players[t].body.invis) v.dx += ai_rand(&v, 300) - 150;   /* bots can't see invisible fighters */
-    v.dist = abs(v.dx);
+    Player *player = &players[i];
+    int target = nearest(i);
+    player->cmd = 0;
+    
+    if (target < 0) return 0;
+    
+    AiView aiView = { .me = &chars[player->s_character], .foe = &chars[players[target].s_character], .self = &player->body, .tgt = &players[target].body,
+                 .rng = &player->rng, .shot = 9999 };
+    aiView.dx = players[target].body.x - player->body.x;
+    
+    if (players[target].body.invis)
+        aiView.dx += ai_rand(&aiView, 300) - 150;   /* bots can't see invisible fighters */
+    aiView.dist = abs(aiView.dx);
+    
     for (int j = 0; j < MAXPROJ; j++)                   /* shots and bombs both count as threats */
         if (projectiles[j].on && projectiles[j].owner != i &&
-            (projectiles[j].bomb || (projectiles[j].vx > 0 ? projectiles[j].x < p->body.x : projectiles[j].x > p->body.x)))
-            v.shot = lo(v.shot, abs(projectiles[j].x - p->body.x));
-    int in = ais[p->ai].think(&v);
-    p->cmd = v.cmd;
-    return in;
+            (projectiles[j].bomb || (projectiles[j].vx > 0 ? projectiles[j].x < player->body.x : projectiles[j].x > player->body.x)))
+            aiView.shot = lo(aiView.shot, abs(projectiles[j].x - player->body.x));
+    int input_from_ai = ais[player->ai].think(&aiView);
+    player->cmd = aiView.cmd;
+    return input_from_ai;
 }
 
 static void take_input(Player *p)

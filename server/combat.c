@@ -1,10 +1,10 @@
 #include "server.h"
 
-static void ko(Player *v)
+static void ko(Player *player)
 {
-    if (--v->lives > 0) {
-        place(v, v->spawn);
-        v->body.grace = RESPAWN_GRACE;
+    if (--player->lives > 0) {
+        place(player, player->spawn);
+        player->body.grace = RESPAWN_GRACE;
     }
 }
 
