@@ -394,7 +394,7 @@ static void draw_roster(void)
     }
 }
 
-/* Street Fighter II style: a grid of portraits and a big animated preview. */
+/* A grid of portraits and a big animated preview. */
 void draw_select(int cur, int asel)
 {
     const Lob *mine = NULL;

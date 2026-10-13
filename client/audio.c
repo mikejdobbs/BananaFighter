@@ -12,11 +12,13 @@ typedef struct {
   Sint16 *pcm;
   Uint32 n;
 } Snd;
+
 typedef struct {
   int s, on, loop;
   Uint32 pos;
   float vol;
 } Voice;
+
 static Snd snd[SN_COUNT];
 static Voice vox[NVOX]; /* voice 0 is the music */
 static SDL_AudioStream *astream;

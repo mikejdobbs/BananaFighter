@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "client.h"
 
-/* Street Fighter II layout: directions on the left hand, punches U I O, kicks J
+/* directions on the left hand, punches U I O, kicks J
    K L. Second bindings keep arrows + Z X C / V B N available. */
 static const struct {
   SDL_Scancode sc;

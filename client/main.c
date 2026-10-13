@@ -12,7 +12,8 @@ int main(int argc, char **argv)
     if ((fd = dial(host, port)) < 0) { fprintf(stderr, "cannot connect to %s:%s\n", host, port); return 1; }
     if (!SDL_Init(SDL_INIT_VIDEO)) { fprintf(stderr, "SDL: %s\n", SDL_GetError()); return 1; }
     SDL_Window *win;
-    if (!SDL_CreateWindowAndRenderer("fighter", SW, SH, 0, &win, &ren)) {
+    
+    if (!SDL_CreateWindowAndRenderer("BananaFighter", SW, SH, 0, &win, &ren)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
