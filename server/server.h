@@ -66,7 +66,7 @@ typedef struct {
     unsigned long long token;       /* secret issued over TCP; must appear in every UDP packet */
     struct sockaddr_in udp_addr;    /* where to send snapshots (learned from authenticated packets) */
     int udp_ok;                     /* 1 once a valid UDP packet has arrived */
-    int next_seq;                   /* next input sequence number we expect */
+    uint32_t next_seq;                   /* next input sequence number we expect */
     int last_in;                    /* last input received, used to fill gaps */
     long long last_udp_ms;          /* time of the last valid UDP packet */
 } Player;

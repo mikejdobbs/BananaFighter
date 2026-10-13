@@ -86,7 +86,9 @@ void step(void)
     update_projectiles();
     int n = 0, last = -1;
     for (int i = 0; i < MAX_PLAYERS; i++)
-        if (fighting(&players[i])) { n++; last = i; }
+        if (fighting(&players[i]))
+            { n++; last = i; }
+    
     if (n <= 1) { over = 1; winner = n ? last + 1 : 0; }   /* winner: slot + 1, 0 = none */
     tick++;
 }

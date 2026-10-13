@@ -100,6 +100,7 @@ static inline int body_step(Body *b, const Character *c, int in, int look, int c
             /* Commands first, so QCF + punch is a fireball and not a normal punch. Ground moves
                need the ground and jump attacks need the air, so a jump kick can't be done standing. */
             int airborne = b->y > 0;
+            
             for (int pass = 0; pass < 2 && b->move < 0; pass++)
                 for (int k = 0; k < MAXMOVES && c->moves[k].name; k++) {
                     const Move *m = &c->moves[k];
