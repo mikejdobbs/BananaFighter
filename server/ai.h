@@ -100,4 +100,4 @@ static const Ai ais[] = {
 #define NAIS (int)(sizeof ais / sizeof ais[0])
 _Static_assert(sizeof ais / sizeof ais[0] <= MAXAI, "raise MAXAI in config.h");
 
-#endif
+#endif // !AI_H
