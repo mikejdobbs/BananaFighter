@@ -32,6 +32,32 @@ add_executable(server
 target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} server)
 target_compile_options(server PRIVATE ${WARNINGS})
 
+# ---------------------------------------------------------------------------
+# Server tests: a black-box client that talks to the server over TCP and UDP.
+# Build with `cmake --build . --target server_test`, then run `ctest`.
+# ---------------------------------------------------------------------------
+enable_testing()
+
+add_executable(server_test tests/test.c)
+target_compile_options(server_test PRIVATE ${WARNINGS})
+add_dependencies(server_test server)  # the tests launch the freshly built server
+
+# Fast tests. "-s" starts a fresh server for every test case.
+add_test(NAME server_protocol
+  COMMAND server_test -s $<TARGET_FILE:server>)
+
+# Slow tests (wait past the 5 s UDP timeout). Naming them runs them even without --slow.
+add_test(NAME server_udp_timeouts
+  COMMAND server_test -s $<TARGET_FILE:server>
+          udp_timeout_drops_player udp_keepalive_prevents_timeout)
+
+# Both bind the fixed port from config.h, so they must not run in parallel.
+set_tests_properties(server_protocol server_udp_timeouts PROPERTIES
+  RUN_SERIAL TRUE
+  TIMEOUT 120)
+set_tests_properties(server_udp_timeouts PROPERTIES
+  LABELS slow)
+
 find_package(SDL3 CONFIG)
 if(SDL3_FOUND)
   # client headers: picked up automatically, re-globbed when files are added

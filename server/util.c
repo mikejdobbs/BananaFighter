@@ -1,4 +1,5 @@
 #include "server.h"
+#include <sys/random.h>
 
 long long now_ms(void) {
     struct timespec t;
@@ -7,26 +8,20 @@ long long now_ms(void) {
 }
 
 unsigned long long make_token(void) {
-    unsigned long long token = 0;
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (f) {
-        if (fread(&token, sizeof token, 1, f) != 1)
-            token = 0;
-        fclose(f);
-    }
-   
-    /* Fallback to rand() if token is still zero */
-    if (!token)
-        token = ((unsigned long long)rand() << 32) ^ (unsigned long long)rand() ^
-            (unsigned long long)now_ms();
+    unsigned long long token;
 
-    if (!token)
-        perror("make_token: failed to generate a non-zero token");
-    
+    do {
+        if (getentropy(&token, sizeof token) != 0) {
+            perror("make_token: getentropy");
+            exit(EXIT_FAILURE);
+        }
+    } while (token == 0);
+
     return token;
 }
 
 int fighting(const Player *p) { return p->in_match && p->lives > 0; }
+
 int player_is_person_or_bot(const Player *p) {
     return p->fd >= 0 || p->bot;
 } /* slot in use */

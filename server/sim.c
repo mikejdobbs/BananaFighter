@@ -89,6 +89,7 @@ void step(void)
 
     update_ships();
     update_projectiles();
+    
     int n = 0, last = -1;
     for (int i = 0; i < MAX_PLAYERS; i++)
         if (fighting(&players[i]))
