@@ -28,30 +28,95 @@ void place(Player *player, int x)
     player->hp = chars[player->s_character].hp;
 }
 
+/*
+ * Start a match when there are enough fighters, at least one connected
+ * human, and every participating human or bot is ready.
+ */
 void check_start(void)
 {
-    int c = 0, r = 0, h = 0, k = 0;
-    for (int i = 0; i < MAX_PLAYERS; i++)
-        if (player_is_person_or_bot(&players[i])) { c++; r += players[i].ready; h += players[i].fd >= 0; }
-    if (h == 0 || c < MIN_PLAYERS || r != c) return;   /* needs a human, and everyone ready */
-    long long t0 = now_ms();
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        Player *p = &players[i];
-        if (!player_is_person_or_bot(p)) continue;
-        p->in_match = 1;
-        p->lives = chars[p->s_character].lives;
-        p->in = p->num_ack_by_server = p->q_head = p->q_num = p->think_cd = p->cmd = 0;
-        p->next_seq = 0;                    /* the client numbers its inputs from 0 each match */
-        p->last_in = 0;
-        p->last_udp_ms = t0;
-        memset(p->in_history, 0, sizeof p->in_history);
-        p->in_history_n = 0;
-        p->spawn = STAGE_W * (++k) / (c + 1);
-        place(p, p->spawn);
+    int fighter_count = 0;
+    int ready_count = 0;
+    int human_count = 0;
+
+    /* Count fighters, ready fighters, and connected human players. */
+    for (int player_index = 0; player_index < MAX_PLAYERS; player_index++) {
+        if (!player_is_person_or_bot(&players[player_index]))
+            continue;
+
+        fighter_count++;
+        ready_count += players[player_index].ready;
+        human_count += (players[player_index].fd >= 0);
     }
+
+    /* Leave the lobby unchanged until all start conditions are met. */
+    if (human_count == 0 ||
+        fighter_count < MIN_PLAYERS ||
+        ready_count != fighter_count) {
+        return;
+    }
+
+    /* Initialize every fighter's UDP activity timer to the same time. */
+    long long match_start_ms = now_ms();
+    int spawn_position_index = 0;
+
+    for (int player_index = 0; player_index < MAX_PLAYERS; player_index++) {
+        Player *player = &players[player_index];
+
+        /* Skip slots occupied by neither a human nor a bot. */
+        if (!player_is_person_or_bot(player))
+            continue;
+
+        /* Enter the match with the selected character's starting lives. */
+        player->in_match = 1;
+        player->lives = chars[player->s_character].lives;
+
+        /* Reset current input, acknowledgement count, and input queue. */
+        player->in = 0;
+        player->num_ack_by_server = 0;
+        player->q_head = 0;
+        player->q_num = 0;
+
+        /* Reset the AI thinking countdown and pending command. */
+        player->think_cd = 0;
+        player->cmd = 0;
+
+        /*
+         * Clients restart input sequence numbering at zero each match.
+         * Clear the previous input used when filling sequence gaps.
+         */
+        player->next_seq = 0;
+        player->last_in = 0;
+
+        /* Start the UDP inactivity timer from the beginning of the match. */
+        player->last_udp_ms = match_start_ms;
+
+        /* Discard input history from the previous match. */
+        memset(player->in_history, 0, sizeof player->in_history);
+        player->in_history_n = 0;
+
+        /*
+         * Space fighters evenly across the stage, with a margin at each end.
+         * For three fighters, positions are approximately 1/4, 1/2, and 3/4
+         * of the stage width.
+         */
+        spawn_position_index++;
+        player->spawn =
+            STAGE_W * spawn_position_index / (fighter_count + 1);
+
+        /* Place the fighter at its assigned spawn position. */
+        place(player, player->spawn);
+    }
+
+    /* Remove effects left over from the previous match. */
     clear_fx();
-    phase = PLAY; tick = over = winner = 0;
-    fprintf(stderr, "match start: %d fighters\n", c);
+
+    /* Enter active play and reset match-wide state. */
+    phase = PLAY;
+    tick = 0;
+    over = 0;
+    winner = 0;
+
+    fprintf(stderr, "match start: %d fighters\n", fighter_count);
 }
 
 void end_match(void)
@@ -70,8 +135,10 @@ void drop(int i)
     memset(&players[i], 0, sizeof players[i]);      /* also wipes the token and UDP state */
     players[i].fd = -1;
     ships[i].on = 0;
+    
     for (int j = 0; j < MAXPROJ; j++)
         if (projectiles[j].owner == i) projectiles[j].on = 0;
+    
     fprintf(stderr, "slot %d left\n", i);
 }
 

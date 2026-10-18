@@ -3,6 +3,7 @@
 #define CONFIG_H
 
 #define PORT          7777
+#define MAX_UDP_PACKETS_PER_CALL 256 /* Maximum number of UDP packets to process per call. */
 #define TICK_HZ       60
 #define MAX_UDP_GAP 50  /* max possible gap between UDP framtes */
 #define MAX_PLAYERS          10        /* max connected players (humans + bots) */

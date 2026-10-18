@@ -141,9 +141,9 @@ void step(void);
 
 /* net.c */
 void send_state(int v);
-void read_client(int i);
+void read_client_in_lobby(int i);
 void read_udp(void);
 void check_udp_timeouts(void);
-void accept_client(int listen_fd);
+void accept_client_to_lobby(int listen_fd);
 
 #endif

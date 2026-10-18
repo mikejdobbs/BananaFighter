@@ -80,9 +80,8 @@ int main(void) {
             for (int i = 0; i < MAX_PLAYERS; i++)
                 if ((poll_fds[i + 1].revents & (POLLIN | POLLHUP | POLLERR)) &&
                     players[i].fd == poll_fds[i + 1].fd)
-                    read_client(i);
+                    read_client_in_lobby(i);
 
-            /**/
             if (poll_fds[MAX_PLAYERS + 1].revents & POLLIN)
                 read_udp();
         }

@@ -146,14 +146,16 @@ static void handle_line(int player_num, char *line) {
         player->ready ^= 1;
 }
 
-void read_client(int i) {
+void read_client_in_lobby(int i) {
     Player *player = &players[i];
     ssize_t n = recv(player->fd, player->buf + player->len,
                      sizeof player->buf - player->len - 1, 0);
+
     if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
         drop(i);
         return;
     }
+
     if (n < 0)
         return;
 
@@ -170,70 +172,119 @@ void read_client(int i) {
         drop(i); /* line too long */
 }
 
-/* Drain the UDP socket. Every packet must name a connected slot and carry that
- * slot's token. */
+/*
+ * Drain the UDP socket. Every packet must name a connected player slot and
+ * carry that player's token.
+ *
+ * Packet format:
+ *   <type> <slot> <token-hex> [sequence input0 input1 ...]
+ *
+ * Gameplay input packets use type 'I'.
+ */
+
 void read_udp(void) {
-    for (int iter = 0; iter < 256; iter++) {
-        char pkt[UDP_PKT_MAX + 1];
-        struct sockaddr_in from;
-        socklen_t fl = sizeof from;
-        ssize_t n = recvfrom(udp_fd, pkt, UDP_PKT_MAX, 0,
-                             (struct sockaddr *)&from, &fl);
-        if (n < 0)
-            return; /* EAGAIN: socket drained */
-        pkt[n] = 0;
+    for (int packets_processed = 0;
+         packets_processed < MAX_UDP_PACKETS_PER_CALL; packets_processed++) {
 
-        char kind;
-        int slot, used = 0;
-        unsigned long long tok;
-        if (sscanf(pkt, "%c %d %llx %n", &kind, &slot, &tok, &used) != 3)
+        /* Receive one packet; the extra byte leaves room for a terminator. */
+        char packet[UDP_PKT_MAX + 1];
+        struct sockaddr_in sender_addr;
+        socklen_t sender_addr_len = sizeof sender_addr;
+
+        ssize_t bytes_received =
+            recvfrom(udp_fd, packet, UDP_PKT_MAX, 0,
+                     (struct sockaddr *)&sender_addr, &sender_addr_len);
+
+        /* Stop when no packet is available (normally EAGAIN: drained). */
+        if (bytes_received < 0)
+            return;
+
+        /* Make the packet a C string so sscanf/strto* can parse it. */
+        packet[bytes_received] = '\0';
+
+        /* Parse the header: type, player slot, and hexadecimal token. */
+        char packet_type;
+        int player_slot;
+        unsigned long long packet_token;
+        int header_length = 0;
+
+        if (sscanf(packet, "%c %d %llx %n", &packet_type, &player_slot,
+                   &packet_token, &header_length) != 3)
+            continue; /* malformed header */
+
+        /* Reject slot numbers outside the player array. */
+        if (player_slot < 0 || player_slot >= MAX_PLAYERS)
             continue;
 
-        if (slot < 0 || slot >= MAX_PLAYERS)
-            continue;
-
-        Player *player = &players[slot];
-        if (player->fd < 0 || player->token == 0 || tok != player->token)
+        /* Reject packets for unused slots or with a wrong token. */
+        Player *player = &players[player_slot];
+        if (player->fd < 0 || player->token == 0 ||
+            packet_token != player->token)
             continue; /* unknown or forged */
 
-        player->udp_addr = from; /* follows NAT rebinding */
+        /* Authenticated: remember where to send this player's UDP updates.
+         * Updating every time follows NAT address/port rebinding. */
+        player->udp_addr = sender_addr;
         player->udp_ok = 1;
         player->last_udp_ms = now_ms();
 
-        if (kind != 'I' || phase != PLAY || !player->in_match || used == 0)
+        /* Only input packets during active play, from players in the match,
+         * carry data that needs to be parsed. */
+        if (packet_type != 'I' || phase != PLAY || !player->in_match ||
+            header_length == 0)
             continue;
 
-        char *s = pkt + used, *e;
-        while (*s == ' ' || *s == '\t')
-            s++;
-        if (*s == '-')
+        /* Start parsing just after the header. */
+        char *parse_cursor = packet + header_length;
+        char *parse_end;
+
+        /* Skip whitespace before the sequence number. */
+        while (*parse_cursor == ' ' || *parse_cursor == '\t')
+            parse_cursor++;
+
+        /* strtoull() accepts a leading '-', so reject it explicitly. */
+        if (*parse_cursor == '-')
             continue;
 
+        /* Parse the sequence number of the first input in this packet. */
         errno = 0;
-        unsigned long long v = strtoull(s, &e, 10);
-        if (e == s || errno == ERANGE || v > UINT32_MAX)
-            continue;
-        uint32_t seq = (uint32_t)v;
+        unsigned long long parsed_sequence =
+            strtoull(parse_cursor, &parse_end, 10);
 
-        int m[UDP_MAX_INPUTS], count = 0;
-        s = e;
-        while (count < UDP_MAX_INPUTS) {
-            long val = strtol(s, &e, 10);
-            if (e == s)
+        /* Reject missing digits, overflow, or values too large for 32 bits. */
+        if (parse_end == parse_cursor || errno == ERANGE ||
+            parsed_sequence > UINT32_MAX)
+            continue;
+
+        uint32_t first_sequence = (uint32_t)parsed_sequence;
+
+        /* Parse the input values that follow the sequence number. */
+        int input_masks[UDP_MAX_INPUTS];
+        int input_count = 0;
+
+        parse_cursor = parse_end;
+        while (input_count < UDP_MAX_INPUTS) {
+            long parsed_input = strtol(parse_cursor, &parse_end, 10);
+
+            /* Stop at the end of the packet or at non-numeric text. */
+            if (parse_end == parse_cursor)
                 break;
-            m[count++] = (int)val;
-            s = e;
+
+            input_masks[input_count++] = (int)parsed_input;
+            parse_cursor = parse_end;
         }
-        apply_udp_inputs(player, seq, m, count);
+
+        /* Queue the inputs, handling duplicates, gaps, and acknowledgements. */
+        apply_udp_inputs(player, first_sequence, input_masks, input_count);
     }
 }
 
 /* In a match a human must keep talking over UDP, or they are dropped. */
 void check_udp_timeouts(void) {
-    long long t = now_ms();
+    long long now = now_ms();
     for (int i = 0; i < MAX_PLAYERS; i++)
         if (players[i].fd >= 0 && players[i].in_match &&
-            t - players[i].last_udp_ms > UDP_TIMEOUT_MS) {
+            now - players[i].last_udp_ms > UDP_TIMEOUT_MS) {
             fprintf(stderr, "slot %d: no UDP for %d ms\n", i, UDP_TIMEOUT_MS);
             drop(i);
         }
