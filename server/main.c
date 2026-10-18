@@ -71,9 +71,10 @@ int main(void) {
         long long timeout_ms = next_tick_ms - now_ms();
         if (poll(poll_fds, MAX_PLAYERS + 2,
                  timeout_ms > 0 ? (int)timeout_ms : 0) > 0) {
+       
             /* Accept Lobby Connections */
             if (poll_fds[0].revents & POLLIN)
-                accept_client(lobby_fd);
+                accept_client_to_lobby(lobby_fd);
 
             /* Accept Player Connections */
             for (int i = 0; i < MAX_PLAYERS; i++)
