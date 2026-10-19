@@ -42,7 +42,7 @@ static inline int ai_melee(const AiView *v)
 	int in = 0, dmg = 0;
 	for (int k = 0; k < MAXMOVES && v->me->moves[k].name; k++) {
 		const Move *m = &v->me->moves[k];
-		if (m->air || m->cmd || m->proj_speed || m->ship || !m->dmg || !ai_in_reach(v, m)) continue;
+        if (m->air || m->cmd || m->crouch || m->proj_speed || m->ship || !m->dmg || !ai_in_reach(v, m)) continue;
 		if (m->dmg > dmg) { dmg = m->dmg; in = m->input; }
 	}
 	return in;

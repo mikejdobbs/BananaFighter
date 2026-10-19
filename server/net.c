@@ -5,9 +5,10 @@
    meter face state invis}... Q vx vy frame stun grace invis_ticks hit fuel {J
    owner x y}... {B owner x y}... {Z owner x vx}... {X x y t}..." state: >= 0
    attacking (move index), -1 idle, -2 stunned, -3 blocking, -4 flying, -5
-   crouching. J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra
+   crouching, -6 crouching and blocking. J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra
    state) lets the client resume simulation. Invisible opponents have x, y and
    state hidden. */
+
 void send_state(int v) {
     char buf[UDP_PKT_MAX];
     int n;
@@ -33,12 +34,14 @@ void send_state(int v) {
             // hide invisible players to everyone but themself
             int hide = p->body.invis && k != v;
 
-            int st = p->body.stun        ? -2
-                     : p->body.block     ? -3
-                     : p->body.move >= 0 ? p->body.move
-                     : p->body.flying    ? -4
-                     : p->body.crouch    ? -5
-                                         : -1;
+            int st = p->body.stun ? -2
+                   : (p->body.block && p->body.crouch) ? -6   /* crouching block */
+                   : p->body.block ? -3
+                   : p->body.move >= 0 ? p->body.move
+                   : p->body.flying ? -4
+                   : p->body.crouch ? -5
+                   : -1;
+            
             n += snprintf(buf + n, sizeof buf - n,
                           " P %d %d %d %d %d %d %d %d %d %d", k, p->s_character,
                           hide ? -1 : p->body.x, hide ? -1 : p->body.y, p->hp,
