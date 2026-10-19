@@ -45,14 +45,27 @@ static inline int detect_cmd(const int *w, int n, int face)
     return CMD_NONE;
 }
 
-/* Which animation row (0..10: LP MP HP LK MK HK cast special super air-punch air-kick) a move uses. */
+/* Which animation row (0..21) a move uses; the sheet row is 7 + this.
+   0..10 existing; 11 crouching block (drawn from snapshot state -6, not a move);
+   12..17 crouching LP MP HP LK MK HK; 18..21 jump LP HP LK HK.
+   Medium jump attacks, and the old shared P/K jump moves, use 9 and 10. */
 static inline int move_row(const Move *m)
 {
     if (m->anim) return m->anim - 1;
-    if (m->air) return (m->input & IN_P) ? 9 : 10;
-    if (!m->cmd)
-        return m->input == IN_LP ? 0 : m->input == IN_MP ? 1 : m->input == IN_HP ? 2 :
-               m->input == IN_LK ? 3 : m->input == IN_MK ? 4 : 5;
+    if (m->air) {
+        switch (m->input) {
+        case IN_LP: return 18;
+        case IN_HP: return 19;
+        case IN_LK: return 20;
+        case IN_HK: return 21;
+        default:    return (m->input & IN_P) ? 9 : 10;
+        }
+    }
+    if (!m->cmd) {
+        int strength = m->input == IN_LP ? 0 : m->input == IN_MP ? 1 : m->input == IN_HP ? 2 :
+                       m->input == IN_LK ? 3 : m->input == IN_MK ? 4 : 5;
+        return (m->crouch ? 12 : 0) + strength;
+    }
     if (m->ship || m->cost >= 60) return 8;
     return m->proj_speed ? 6 : 7;
 }
