@@ -129,21 +129,21 @@ static void apply_udp_inputs(Player *player, uint32_t seq, const int *inputs,
     }
 }
 
-static void handle_line(int player_num, char *line) {
+static void handle_line_in_lobby(int player_num, char *line) {
     Player *player = &players[player_num];
-    int v, w;
+    int character, ai;
 
     if (phase == LOBBY && !player->in_match &&
-        sscanf(line, "B %d %d", &v, &w) == 2)
-        add_bot(v, w); /* B <char> <ai>: any number of bots */
+        sscanf(line, "B %d %d", &character, &ai) == 2)
+        add_bot(character, ai); /* B <char> <ai>: any number of bots */
     else if (phase == LOBBY && !player->in_match &&
-             sscanf(line, "X %d", &v) == 1)
-        del_bot(v); /* X <slot> removes a bot */
-    else if (sscanf(line, "J %d", &v) == 1 && !player->in_match &&
+             sscanf(line, "X %d", &character) == 1)
+        del_bot(character); /* X <slot> removes a bot */
+    else if (sscanf(line, "J %d", &character) == 1 && !player->in_match &&
              !player->ready)
         player->s_character =
-            (v >= 0 && v < NCHARS)
-                ? v
+            (character >= 0 && character < NCHARS)
+                ? character
                 : 0; /* J <char>: hover/pick; locked-in fighters can't change */
     else if (line[0] == 'R' && phase == LOBBY && !player->in_match)
         player->ready ^= 1;
@@ -166,7 +166,7 @@ void read_client_in_lobby(int i) {
     char *newline;
     while ((newline = memchr(player->buf, '\n', player->len))) {
         *newline = 0;
-        handle_line(i, player->buf);
+        handle_line_in_lobby(i, player->buf);
         int used = (int)(newline - player->buf) + 1;
         memmove(player->buf, player->buf + used, player->len - used);
         player->len -= used;
