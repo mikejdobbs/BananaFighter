@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include "server.h"
 
 /* Select screen (TCP): "L {U slot char ready bot}..."   (bot = 0 for humans,
