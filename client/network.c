@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include "client.h"
 
-int fd = -1, me = -1, tick, winner, hasq, mycmd;
+int networkSocketFd = -1, me = -1, tick, winner, hasq, mycmd;
 int nf, nl, ns, nb, nsh, nex, nai;
 char phase = 'L';
 Fig F[MAX_PLAYERS];
@@ -167,7 +167,7 @@ static void udp_open(void)
     struct sockaddr_storage ss;
     socklen_t sl = sizeof ss;
     if (udp_fd >= 0) { close(udp_fd); udp_fd = -1; }
-    if (getpeername(fd, (struct sockaddr *)&ss, &sl) < 0) return;
+    if (getpeername(networkSocketFd, (struct sockaddr *)&ss, &sl) < 0) return;
     int s = socket(ss.ss_family, SOCK_DGRAM, 0);
     if (s < 0) return;
     if (connect(s, (struct sockaddr *)&ss, sl) < 0) { close(s); return; }
@@ -207,7 +207,7 @@ static void udp_drain(void)
 static int pump_tcp(void)
 {
     for (;;) {
-        ssize_t n = recv(fd, rb + rl, sizeof rb - rl - 1, 0);
+        ssize_t n = recv(networkSocketFd, rb + rl, sizeof rb - rl - 1, 0);
         if (n == 0) return 0;
         if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
         rl += n;
@@ -241,7 +241,7 @@ void sendf(const char *fmt, ...)
     va_start(ap, fmt);
     int n = vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
-    send(fd, b, n, 0);
+    send(networkSocketFd, b, n, 0);
 }
 
 int dial(const char *host, const char *port)
@@ -286,3 +286,4 @@ void client_tick(void)
     body_step(&pb, &chars[pch], mask, lk, mycmd, near(pb.x));
     sent++;
 }
+
