@@ -12,7 +12,7 @@ static const Uint8 pal[MAX_PLAYERS][3] = {
 
 int show_boxes, options_open, options_item;
 unsigned aclk;
-SDL_Renderer *ren;
+SDL_Renderer *renderer;
 static Anim an[MAX_PLAYERS];   /* per-slot animation state */
 static SDL_Texture *tex[NCHARS]; /* NULL = fall back to coloured boxes */
 static SDL_Texture *shots, *shipt, *fxt, *bg;
@@ -29,7 +29,7 @@ static SDL_Texture *load_tex(const char *file)
         s = SDL_LoadBMP(path);
     }
     if (!s) return NULL;
-    SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
+    SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
     SDL_DestroySurface(s);
     if (t) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
     return t;
@@ -122,8 +122,8 @@ static void pick(const Fig *f, int *row, int *col)
 static void box(float x, float y, float w, float h, int r, int g, int b, int a)
 {
     SDL_FRect q = { x, y, w, h };
-    SDL_SetRenderDrawColor(ren, r, g, b, a);
-    SDL_RenderFillRect(ren, &q);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_RenderFillRect(renderer, &q);
 }
 
 static void text(float x, float y, const char *fmt, ...)
@@ -133,8 +133,8 @@ static void text(float x, float y, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
-    SDL_SetRenderDrawColor(ren, 240, 240, 240, 255);
-    SDL_RenderDebugText(ren, x, y, b);
+    SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
+    SDL_RenderDebugText(renderer, x, y, b);
 }
 
 static void draw_sprite(const Fig *f, SDL_Texture *t)
@@ -152,7 +152,7 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
     SDL_SetTextureAlphaMod(t, f->invis ? 90 : 255);
     if (f->st == -2) SDL_SetTextureColorMod(t, 255, 140, 140);     /* hurt: red tint */
     else SDL_SetTextureColorMod(t, 255, 255, 255);
-    SDL_RenderTextureRotated(ren, t, &src, &dst, 0, NULL,
+    SDL_RenderTextureRotated(renderer, t, &src, &dst, 0, NULL,
                              f->face < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
 
     const Uint8 *pc = pal[f->slot % MAX_PLAYERS];                   /* slot marker above the head */
@@ -209,7 +209,7 @@ static void draw_shot(const Shot *s)
         SDL_FRect src = { ch * SHOT_CELL, 0, SHOT_CELL, SHOT_CELL };
         SDL_FRect dst = { x - sz / 2, y - sz / 2, sz, sz };
         double ang = spin ? (double)aclk * 18 * face : 0;
-        SDL_RenderTextureRotated(ren, shots, &src, &dst, ang, NULL,
+        SDL_RenderTextureRotated(renderer, shots, &src, &dst, ang, NULL,
                                  !spin && face < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
     } else {
         const Uint8 *col = pal[s->owner % MAX_PLAYERS];
@@ -222,7 +222,7 @@ static void draw_bomb(const Shot *s)
     float x = s->x * SCALE, y = GROUND - s->y * SCALE;
     if (fxt) {
         SDL_FRect src = { 0, 0, FX_CELL, FX_CELL }, dst = { x - 20, y - 20, 40, 40 };
-        SDL_RenderTexture(ren, fxt, &src, &dst);
+        SDL_RenderTexture(renderer, fxt, &src, &dst);
     } else {
         box(x - 6, y - 10, 12, 20, 40, 40, 50, 255);
     }
@@ -234,7 +234,7 @@ static void draw_boom(const Boom *b)
     float sz = BOMB_R * 2 * SCALE * (f == 1 ? 0.7f : 1.0f), x = b->x * SCALE, y = GROUND - b->y * SCALE;
     if (fxt) {
         SDL_FRect src = { f * FX_CELL, 0, FX_CELL, FX_CELL }, dst = { x - sz / 2, y - sz * 0.8f, sz, sz };
-        SDL_RenderTexture(ren, fxt, &src, &dst);
+        SDL_RenderTexture(renderer, fxt, &src, &dst);
     } else {
         box(x - sz / 2, y - sz / 2, sz, sz / 2, 255, 150, 40, 160);
     }
@@ -246,7 +246,7 @@ static void draw_ship(const Ship *s)
     if (shipt) {
         SDL_FRect src = { ((aclk / 8) % 2) * SHIP_FW, 0, SHIP_FW, SHIP_FH };
         SDL_FRect dst = { x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 2, SHIP_DRAW_W, SHIP_DRAW_H };
-        SDL_RenderTexture(ren, shipt, &src, &dst);
+        SDL_RenderTexture(renderer, shipt, &src, &dst);
     } else {
         box(x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 4, SHIP_DRAW_W, SHIP_DRAW_H / 2, 140, 145, 160, 255);
     }
@@ -256,7 +256,7 @@ void draw_match(void)
 {
     if (bg) {
         SDL_FRect d = { 0, 0, SW, GROUND };
-        SDL_RenderTexture(ren, bg, NULL, &d);
+        SDL_RenderTexture(renderer, bg, NULL, &d);
     }
     box(0, GROUND, SW, SH - GROUND, 40, 36, 48, 255);
     box(0, GROUND, SW, 4, 90, 82, 100, 255);
@@ -285,9 +285,9 @@ void draw_match(void)
     if (winner) {
         char b[32];
         snprintf(b, sizeof b, winner - 1 == me ? "YOU WIN" : "P%d WINS", winner - 1);
-        SDL_SetRenderScale(ren, 3, 3);
+        SDL_SetRenderScale(renderer, 3, 3);
         text((SW / 3.0f - strlen(b) * 8) / 2, 60, "%s", b);
-        SDL_SetRenderScale(ren, 1, 1);
+        SDL_SetRenderScale(renderer, 1, 1);
     }
 }
 
@@ -323,9 +323,9 @@ void draw_options(void)
     box(0, 0, SW, SH, 0, 0, 0, 180);
     box(x - 3, y - 3, w + 6, h + 6, 210, 190, 70, 255);
     box(x, y, w, h, 22, 24, 40, 255);
-    SDL_SetRenderScale(ren, 2, 2);
+    SDL_SetRenderScale(renderer, 2, 2);
     text((x + 24) / 2, (y + 20) / 2, "OPTIONS");
-    SDL_SetRenderScale(ren, 1, 1);
+    SDL_SetRenderScale(renderer, 1, 1);
 
     for (int i = 0; i < OPT_COUNT; i++) {
         float ry = y + 72 + i * 40;
@@ -364,7 +364,7 @@ static void idle_portrait(int ch, float x, float y, float size, int animate)
     SDL_FRect dst = { x, y, size, size };
     SDL_SetTextureAlphaMod(tex[ch], 255);
     SDL_SetTextureColorMod(tex[ch], 255, 255, 255);
-    SDL_RenderTexture(ren, tex[ch], &src, &dst);
+    SDL_RenderTexture(renderer, tex[ch], &src, &dst);
 }
 
 /* The roster along the bottom: every player's slot, fighter and ready state. */
@@ -405,24 +405,24 @@ void draw_select(int cur, int asel)
 
     if (bg) {
         SDL_FRect d = { 0, 0, SW, GROUND };
-        SDL_RenderTexture(ren, bg, NULL, &d);
+        SDL_RenderTexture(renderer, bg, NULL, &d);
     }
     box(0, 0, SW, SH, 8, 8, 20, 175);
 
-    SDL_SetRenderScale(ren, 3, 3);
+    SDL_SetRenderScale(renderer, 3, 3);
     text(40 / 3.0f, 36 / 3.0f, "SELECT YOUR FIGHTER");
-    SDL_SetRenderScale(ren, 1, 1);
+    SDL_SetRenderScale(renderer, 1, 1);
 
     /* the big preview of whoever the cursor is on */
     box(40, 100, 420, 430, 20, 20, 40, 190);
     idle_portrait(cur, 50, 110, 400, 1);
-    SDL_SetRenderScale(ren, 2, 2);
+    SDL_SetRenderScale(renderer, 2, 2);
     text(60 / 2.0f, 505 / 2.0f, "%s", c->name);
-    SDL_SetRenderScale(ren, 1, 1);
+    SDL_SetRenderScale(renderer, 1, 1);
     if (locked) {
-        SDL_SetRenderScale(ren, 2, 2);
+        SDL_SetRenderScale(renderer, 2, 2);
         text(250 / 2.0f, 130 / 2.0f, "LOCKED IN");
-        SDL_SetRenderScale(ren, 1, 1);
+        SDL_SetRenderScale(renderer, 1, 1);
     }
     text(60, 542, "HP %d   LIVES %d   SPEED %d   JUMP %d", c->hp, c->lives, c->speed, c->jump);
     text(60, 558, "%s", c->fly ? "Tail flight: hold jump in the air" : "");
@@ -471,3 +471,4 @@ void draw_select(int cur, int asel)
 
     draw_roster();
 }
+

@@ -5,33 +5,33 @@
 
 int main(int argc, char **argv)
 {
-    const char *host = argc > 1 ? argv[1] : "127.0.0.1";
-    char port[8];
-    snprintf(port, sizeof port, "%d", argc > 2 ? atoi(argv[2]) : PORT);
+    const char *serverHost = argc > 1 ? argv[1] : "127.0.0.1";
+    char serverPort[8];
+    snprintf(serverPort, sizeof serverPort, "%d", argc > 2 ? atoi(argv[2]) : PORT);
 
-    if ((fd = dial(host, port)) < 0) { fprintf(stderr, "cannot connect to %s:%s\n", host, port); return 1; }
-    if (!SDL_Init(SDL_INIT_VIDEO)) { fprintf(stderr, "SDL: %s\n", SDL_GetError()); return 1; }
-    SDL_Window *win;
+    if ((networkSocketFd = dial(serverHost, serverPort)) < 0) { fprintf(stderr, "cannot connect to %s:%s\n", serverHost, serverPort); return 1; }
+    if (!SDL_Init(SDL_INIT_VIDEO)) { fprintf(stderr, "SDL init error: %s\n", SDL_GetError()); return 1; }
+    SDL_Window *window;
     
-    if (!SDL_CreateWindowAndRenderer("BananaFighter", SW, SH, 0, &win, &ren)) {
+    if (!SDL_CreateWindowAndRenderer("BananaFighter", SW, SH, 0, &window, &renderer)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderVSync(ren, 1);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderVSync(renderer, 1);
     load_sprites();
     pads_init();
     audio_init();
 
-    const Uint64 dt = SDL_NS_PER_SECOND / TICK_HZ;
-    Uint64 acc = 0, prev = SDL_GetTicksNS();
-    int cur = 0, asel = 0, quit = 0, prev_mask = 0;     /* cursor character, the next bot's AI */
+    const Uint64 fixedDeltaNs = SDL_NS_PER_SECOND / TICK_HZ;
+    Uint64 accumulatedNs = 0, previousTickNs = SDL_GetTicksNS();
+    int cursorIndex = 0, aiSelectionIndex = 0, shouldQuit = 0, previousInputMask = 0;     /* cursor character, the next bot's AI */
 
-    while (!quit) {
-        int key_ready = 0;
+    while (!shouldQuit) {
+        int returnKeyPressed = 0;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_EVENT_QUIT) quit = 1;
+            if (e.type == SDL_EVENT_QUIT) shouldQuit = 1;
             else if (e.type == SDL_EVENT_GAMEPAD_ADDED) pad_open(e.gdevice.which);
             else if (e.type == SDL_EVENT_GAMEPAD_REMOVED) pad_close(e.gdevice.which);
             else if (e.type == SDL_EVENT_JOYSTICK_ADDED) joy_open(e.jdevice.which);
@@ -46,14 +46,14 @@ int main(int argc, char **argv)
             if (k == SDLK_F1) show_boxes ^= 1;
             if (k == SDLK_M) mastervol = mastervol > 0 ? 0 : SOUND_ON;
             if (options_open) {                     /* the menu swallows everything else */
-                if (k == SDLK_RETURN) option_activate(&quit);
+                if (k == SDLK_RETURN) option_activate(&shouldQuit);
                 continue;
             }
             if (phase != 'L') continue;
-            if (k == SDLK_RETURN) key_ready = 1;
-            if (k == SDLK_LEFTBRACKET && nai)  asel = (asel + nai - 1) % nai;
-            if (k == SDLK_RIGHTBRACKET && nai) asel = (asel + 1) % nai;
-            if (k == SDLK_T) { sendf("B %d %d\n", cur, asel); sfx(SN_BOT, 0.8f); }   /* B is a kick key */
+            if (k == SDLK_RETURN) returnKeyPressed = 1;
+            if (k == SDLK_LEFTBRACKET && nai)  aiSelectionIndex = (aiSelectionIndex + nai - 1) % nai;
+            if (k == SDLK_RIGHTBRACKET && nai) aiSelectionIndex = (aiSelectionIndex + 1) % nai;
+            if (k == SDLK_T) { sendf("B %d %d\n", cursorIndex, aiSelectionIndex); sfx(SN_BOT, 0.8f); }   /* B is a kick key */
             if (k == SDLK_BACKSPACE)
                 for (int i = nl - 1; i >= 0; i--)
                     if (U[i].bot) { sendf("X %d\n", U[i].slot); break; }
@@ -65,60 +65,60 @@ int main(int argc, char **argv)
         if (!pump()) { fprintf(stderr, "server closed the connection\n"); break; }
 
         /* newly pressed directions/buttons from the keyboard and every pad */
-        int now = keymask() | padmask(), edge = now & ~prev_mask;
-        prev_mask = now;
-        int p_start = pad_edge(SDL_GAMEPAD_BUTTON_START), p_back = pad_edge(SDL_GAMEPAD_BUTTON_BACK);
-        int p_lb = pad_edge(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), p_rb = pad_edge(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+        int currentInputMask = keymask() | padmask(), inputEdge = currentInputMask & ~previousInputMask;
+        previousInputMask = currentInputMask;
+        int padStartEdge = pad_edge(SDL_GAMEPAD_BUTTON_START), padBackEdge = pad_edge(SDL_GAMEPAD_BUTTON_BACK);
+        int padLeftShoulderEdge = pad_edge(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), padRightShoulderEdge = pad_edge(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
 
-        int menu_frame = options_open;              /* a frame that began in the menu never also acts on the select screen */
+        int menuFrameBeganOpen = options_open;              /* a frame that began in the menu never also acts on the select screen */
         if (options_open) {
-            if (p_start) options_open = 0;
-            else options_input(edge, !!(edge & IN_LK), &quit);
-        } else if (phase == 'S' && p_start) {       /* Start opens the menu during a fight */
+            if (padStartEdge) options_open = 0;
+            else options_input(inputEdge, !!(inputEdge & IN_LK), &shouldQuit);
+        } else if (phase == 'S' && padStartEdge) {       /* Start opens the menu during a fight */
             options_open = 1;
             options_item = OPT_RESUME;
-            menu_frame = 1;
+            menuFrameBeganOpen = 1;
         }
 
-        if (phase == 'L' && !options_open && !menu_frame) {
-            const Lob *mine = NULL;
+        if (phase == 'L' && !options_open && !menuFrameBeganOpen) {
+            const Lob *myLobbyEntry = NULL;
             for (int i = 0; i < nl; i++)
-                if (U[i].slot == me) mine = &U[i];
-            int locked = mine && mine->ready;
-            if (!locked) {                          /* a locked-in fighter can't move the cursor */
-                int old = cur;
-                if (edge & IN_L) cur = (cur + NCHARS - 1) % NCHARS;
-                if (edge & IN_R) cur = (cur + 1) % NCHARS;
-                if (edge & IN_U) cur = (cur + NCHARS - SEL_COLS) % NCHARS;
-                if (edge & IN_D) cur = (cur + SEL_COLS) % NCHARS;
-                if (cur != old) { sendf("J %d\n", cur); sfx(SN_MOVE, 0.6f); }
+                if (U[i].slot == me) myLobbyEntry = &U[i];
+            int isLockedIn = myLobbyEntry && myLobbyEntry->ready;
+            if (!isLockedIn) {                          /* a locked-in fighter can't move the cursor */
+                int previousCursorIndex = cursorIndex;
+                if (inputEdge & IN_L) cursorIndex = (cursorIndex + NCHARS - 1) % NCHARS;
+                if (inputEdge & IN_R) cursorIndex = (cursorIndex + 1) % NCHARS;
+                if (inputEdge & IN_U) cursorIndex = (cursorIndex + NCHARS - SEL_COLS) % NCHARS;
+                if (inputEdge & IN_D) cursorIndex = (cursorIndex + SEL_COLS) % NCHARS;
+                if (cursorIndex != previousCursorIndex) { sendf("J %d\n", cursorIndex); sfx(SN_MOVE, 0.6f); }
             }
-            if ((edge & (IN_P | IN_K)) || key_ready || p_start) {
-                if (!locked) sendf("J %d\n", cur);
+            if ((inputEdge & (IN_P | IN_K)) || returnKeyPressed || padStartEdge) {
+                if (!isLockedIn) sendf("J %d\n", cursorIndex);
                 sendf("R\n");
-                sfx(locked ? SN_SELECT : SN_READY, 0.9f);
+                sfx(isLockedIn ? SN_SELECT : SN_READY, 0.9f);
             }
-            if (p_back) { sendf("B %d %d\n", cur, asel); sfx(SN_BOT, 0.8f); }
-            if (p_lb && nai) asel = (asel + nai - 1) % nai;
-            if (p_rb && nai) asel = (asel + 1) % nai;
+            if (padBackEdge) { sendf("B %d %d\n", cursorIndex, aiSelectionIndex); sfx(SN_BOT, 0.8f); }
+            if (padLeftShoulderEdge && nai) aiSelectionIndex = (aiSelectionIndex + nai - 1) % nai;
+            if (padRightShoulderEdge && nai) aiSelectionIndex = (aiSelectionIndex + 1) % nai;
         }
 
-        Uint64 t = SDL_GetTicksNS();
-        acc += t - prev;
-        prev = t;
-        if (acc > 5 * dt) acc = 5 * dt;             /* don't spiral after a stall */
-        for (; acc >= dt; acc -= dt) { client_tick(); anim_tick(); }
+        Uint64 nowNs = SDL_GetTicksNS();
+        accumulatedNs += nowNs - previousTickNs;
+        previousTickNs = nowNs;
+        if (accumulatedNs > 5 * fixedDeltaNs) accumulatedNs = 5 * fixedDeltaNs;             /* don't spiral after a stall */
+        for (; accumulatedNs >= fixedDeltaNs; accumulatedNs -= fixedDeltaNs) { client_tick(); anim_tick(); }
 
         music(phase == 'S' ? SN_MUSIC_FIGHT : SN_MUSIC_MENU);
         audio_pump();
 
-        SDL_SetRenderDrawColor(ren, 20, 20, 30, 255);
-        SDL_RenderClear(ren);
-        if (phase == 'S') draw_match(); else draw_select(cur, asel);
+        SDL_SetRenderDrawColor(renderer, 20, 20, 30, 255);
+        SDL_RenderClear(renderer);
+        if (phase == 'S') draw_match(); else draw_select(cursorIndex, aiSelectionIndex);
         if (options_open) draw_options();
-        SDL_RenderPresent(ren);
+        SDL_RenderPresent(renderer);
     }
-    close(fd);
+    close(networkSocketFd);
     SDL_Quit();
     return 0;
 }

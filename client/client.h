@@ -113,7 +113,7 @@ enum {
 enum { OPT_RESUME, OPT_SOUND, OPT_BOXES, OPT_QUIT, OPT_COUNT };
 
 /* game state, filled in by network.c from the server's snapshots */
-extern int fd, me, tick, winner, hasq, mycmd;
+extern int networkSocketFd, me, tick, winner, hasq, mycmd;
 extern int nf, nl, ns, nb, nsh, nex, nai;
 extern char phase;
 extern Fig F[MAX_PLAYERS];
@@ -132,14 +132,14 @@ extern unsigned sent, ack; /* inputs sent / inputs the server has consumed */
 /* render.c */
 extern int show_boxes, options_open, options_item; /* the Escape menu */
 extern unsigned aclk;                              /* animation clock, one per tick */
-extern SDL_Renderer *ren;
+extern SDL_Renderer *renderer;
 void load_sprites(void);
 void anim_tick(void);
 void draw_match(void);
-void draw_select(int cur, int asel);
+void draw_select(int cursorIndex, int aiSelectionIndex);
 void draw_options(void);
-void options_input(int edge, int confirm, int *quit);
-void option_activate(int *quit);
+void options_input(int inputEdge, int confirm, int *shouldQuit);
+void option_activate(int *shouldQuit);
 
 /* audio.c */
 extern float mastervol;
