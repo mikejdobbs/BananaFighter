@@ -24,6 +24,7 @@ int main(int argc, char **argv)
     audio_init();
 
     const Uint64 fixedDeltaNs = SDL_NS_PER_SECOND / TICK_HZ;
+    
     Uint64 accumulatedNs = 0, previousTickNs = SDL_GetTicksNS();
     int cursorIndex = 0, aiSelectionIndex = 0, shouldQuit = 0, previousInputMask = 0;     /* cursor character, the next bot's AI */
 

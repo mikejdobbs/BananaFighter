@@ -1,3 +1,11 @@
+/*
+ * network.c
+ * Client networking and prediction:
+ * - TCP: connect, read line-oriented protocol (Y/A/U/L/S), and send commands
+ * - UDP: keepalive/hello, input streaming with sequence numbers, and snapshot drain
+ * - Client-side prediction: reconcile to snapshots and replay unacked inputs
+ */
+
 #define _POSIX_C_SOURCE 200809L
 #include <arpa/inet.h>
 #include <errno.h>
@@ -13,18 +21,24 @@
 #include <unistd.h>
 #include "client.h"
 
-int networkSocketFd = -1, me = -1, tick, winner, hasq, mycmd;
-int nf, nl, ns, nb, nsh, nex, nai;
-char phase = 'L';
-Fig F[MAX_PLAYERS];
-Lob U[MAX_PLAYERS];
-Shot S[MAXPROJ], BM[MAXPROJ];
-Ship SHP[MAX_PLAYERS];
-Boom EX[MAXBOOM];
-Extra Q;
-char aiName[MAXAI][16];
+int networkSocketFd = -1;  /* TCP socket to the server */
+int me = -1;               /* My player slot */
+int tick, winner;          /* Current tick and winner (slot+1, or 0) */
+int hasq;                  /* Whether the latest snapshot had a Q block */
+int mycmd;                 /* Last detected local command */
 
-/* prediction state */
+/* Parsed counts and state from the latest snapshot */
+int nf, nl, ns, nb, nsh, nex, nai;  /* fighters, lobby, shots, bombs, ships, explosions, AIs */
+char phase = 'L';                    /* 'L' lobby or 'S' match */
+Fig F[MAX_PLAYERS];                  /* Fighters */
+Lob U[MAX_PLAYERS];                  /* Lobby entries */
+Shot S[MAXPROJ], BM[MAXPROJ];        /* Shots and bombs */
+Ship SHP[MAX_PLAYERS];               /* Ships */
+Boom EX[MAXBOOM];                    /* Explosions */
+Extra Q;                             /* Viewer-only extra state for prediction */
+char aiName[MAXAI][16];              /* AI plugin names announced by the server */
+
+/* Client-side prediction: predicted body state, flags, and input history */
 Body pb;
 int predicting, pch;
 unsigned sent, ack;
@@ -38,11 +52,13 @@ static unsigned long long token;
 static long long last_hello;
 static int last_tick = -1;
 
+/* Helper: parse integer from string and advance pointer */
 static int num(char **s) { return (int)strtol(*s, s, 10); }
 static void udp_open(void);
 static void udp_hello(void);
 
-static int look(int x)                  /* direction of the nearest visible opponent */
+/* Direction to the nearest visible non-self opponent at position x: -1 left, +1 right, 0 none */
+static int look(int x)
 {
     int b = -1;
     for (int i = 0; i < nf; i++)
@@ -52,7 +68,8 @@ static int look(int x)                  /* direction of the nearest visible oppo
     return b < 0 ? 0 : F[b].x >= x ? 1 : -1;
 }
 
-static int near(int x)                  /* within throw range of the nearest visible opponent? */
+/* Whether the nearest visible non-self opponent is within throw range of x */
+static int near(int x)
 {
     int b = -1;
     for (int i = 0; i < nf; i++)
@@ -62,7 +79,7 @@ static int near(int x)                  /* within throw range of the nearest vis
     return b >= 0 && abs(F[b].x - x) <= THROW_RANGE;
 }
 
-/* The CMD_WIN inputs ending at input number i, oldest first: what the server sees as history. */
+/* Fill w[] with the last CMD_WIN inputs ending at index i (oldest first) */
 static void window(unsigned i, int *w)
 {
     for (int k = 0; k < CMD_WIN; k++) {
@@ -71,7 +88,7 @@ static void window(unsigned i, int *w)
     }
 }
 
-/* Adopt the server's state, then replay inputs it hasn't consumed yet. */
+/* Adopt the server snapshot, then replay unacknowledged inputs to predict current state */
 static void reconcile(void)
 {
     const Fig *f = NULL;
@@ -95,17 +112,20 @@ static void reconcile(void)
     predicting = 1;
 }
 
+/* Parse one protocol line (Y/A/U/L/S...) and update client state accordingly */
 static void parse(char *s)
 {
     char t = *s++;
 
     if (t == 'Y') { me = num(&s); return; }
+
     if (t == 'U') {                                     /* "U token": credential for the UDP channel */
         token = strtoull(s, NULL, 16);
         udp_open();
         udp_hello();
         return;
     }
+
     if (t == 'A') {                                     /* "A ai0 ai1 ..." */
         nai = 0;
         while (nai < MAXAI) {
@@ -119,9 +139,14 @@ static void parse(char *s)
         return;
     }
     if (t != 'L' && t != 'S') return;
-    if (phase != t) { sent = 0; predicting = 0; audio_reset(); last_tick = -1; }   /* new phase: restart numbering and sounds */
+
+    /* Phase transition: reset numbering and sounds */
+    if (phase != t) { sent = 0; predicting = 0; audio_reset(); last_tick = -1; }
     phase = t;
-    nf = nl = ns = nb = nsh = nex = hasq = 0;
+
+    /* Reset per-snapshot counters */
+    nf = 0; nl = 0; ns = 0; nb = 0; nsh = 0; nex = 0; hasq = 0;
+
     if (t == 'S') { tick = num(&s); winner = num(&s); ack = (unsigned)num(&s); }
 
     for (;;) {
@@ -164,13 +189,23 @@ static long long now_ms(void)
 
 static void udp_open(void)
 {
-    struct sockaddr_storage ss;
-    socklen_t sl = sizeof ss;
+    struct sockaddr_storage peer_addr;
+    socklen_t peer_len = sizeof peer_addr;
+
+    /* Close previous socket if any */
     if (udp_fd >= 0) { close(udp_fd); udp_fd = -1; }
-    if (getpeername(networkSocketFd, (struct sockaddr *)&ss, &sl) < 0) return;
-    int s = socket(ss.ss_family, SOCK_DGRAM, 0);
-    if (s < 0) return;
-    if (connect(s, (struct sockaddr *)&ss, sl) < 0) { close(s); return; }
+
+    /* Discover the TCP peer address to connect a UDP socket to the same host */
+    if (getpeername(networkSocketFd, (struct sockaddr *)&peer_addr, &peer_len) < 0)
+        return;
+
+    int s = socket(peer_addr.ss_family, SOCK_DGRAM, 0);
+    if (s < 0)
+        return;
+    if (connect(s, (struct sockaddr *)&peer_addr, peer_len) < 0) {
+        close(s);
+        return;
+    }
     fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK);
     udp_fd = s;
 }
@@ -180,6 +215,7 @@ static void udp_send(const char *b, int n)
     if (udp_fd >= 0 && n > 0) send(udp_fd, b, n, 0);
 }
 
+/* Send a UDP keepalive/hello (H slot token) to register our address */
 static void udp_hello(void)
 {
     char b[64];
@@ -188,6 +224,7 @@ static void udp_hello(void)
 
 static void udp_drain(void)
 {
+    /* Drain up to a small burst of UDP packets, applying only newer S snapshots */
     char pkt[2048];
     for (int iter = 0; udp_fd >= 0 && iter < 64; iter++) {
         ssize_t n = recv(udp_fd, pkt, sizeof pkt - 1, 0);
@@ -204,6 +241,7 @@ static void udp_drain(void)
     }
 }
 
+/* Read and parse as many complete TCP lines as available; return 0 on disconnect */
 static int pump_tcp(void)
 {
     for (;;) {
@@ -226,14 +264,17 @@ static int pump_tcp(void)
 int pump(void)                                      /* 0 = server closed the connection */
 {
     int ok = pump_tcp();
+
+    /* Periodic UDP keepalive; also opens the server's return path */
     if (udp_fd >= 0 && token) {
         long long t = now_ms();
-        if (t - last_hello >= 500) { udp_hello(); last_hello = t; }   /* keepalive, also opens the server's path to us */
+        if (t - last_hello >= 500) { udp_hello(); last_hello = t; }
     }
     udp_drain();
     return ok;
 }
 
+/* Send a formatted command over TCP */
 void sendf(const char *fmt, ...)
 {
     char b[48];
@@ -241,9 +282,11 @@ void sendf(const char *fmt, ...)
     va_start(ap, fmt);
     int n = vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
-    send(networkSocketFd, b, n, 0);
+    if (n > 0)
+        send(networkSocketFd, b, (size_t)n, 0);
 }
 
+/* Resolve and connect a non-blocking TCP socket with TCP_NODELAY; returns fd or -1 */
 int dial(const char *host, const char *port)
 {
     struct addrinfo hints = { .ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM }, *res, *ai;
@@ -264,8 +307,7 @@ int dial(const char *host, const char *port)
     return s;
 }
 
-/* One fixed simulation step: send the input, predict its result locally.
-   While the options menu is open the fighter stands still (neutral input) but the match goes on. */
+/* One fixed simulation step: send input window over UDP and advance local prediction */
 void client_tick(void)
 {
     if (phase != 'S' || !predicting) return;

@@ -1,8 +1,20 @@
+/*
+ * input.c
+ * Keyboard, gamepad, and raw joystick input:
+ * - Key bindings for directions and six attack buttons
+ * - Gamepad mapping (Xbox-style) and dead-zone handling
+ * - Edge detection helpers for menu/actions
+ */
+
 #include <stdio.h>
 #include "client.h"
 
-/* directions on the left hand, punches U I O, kicks J
-   K L. Second bindings keep arrows + Z X C / V B N available. */
+/*
+ * Keyboard bindings:
+ * - Directions on the left hand (arrows or WASD)
+ * - Punches: U I O  (alt: Z X C)
+ * - Kicks:   J K L  (alt: V B N)
+ */
 static const struct {
   SDL_Scancode sc;
   int bit;
@@ -19,8 +31,11 @@ static const struct {
     {SDL_SCANCODE_L, IN_HK},    {SDL_SCANCODE_N, IN_HK},
 };
 
-/* Gamepad buttons (Xbox naming): top row X Y RB = light/medium/heavy punch,
-   bottom row A B RT = light/medium/heavy kick. The d-pad and left stick move.
+/*
+ * Gamepad buttons (Xbox naming):
+ * - Top row X, Y, RB -> light/medium/heavy punch
+ * - Bottom row A, B, RT -> light/medium/heavy kick
+ * D-pad and left stick provide movement (with PAD_DEAD dead-zone).
  */
 static const struct {
   SDL_GamepadButton b;
@@ -33,15 +48,19 @@ static const struct {
     {SDL_GAMEPAD_BUTTON_EAST, IN_MK},
 };
 
-/* Raw joysticks that SDL has no gamepad mapping for: hat or first two axes
-   move, buttons 0-5 are LP MP HP LK MK HK. */
+/*
+ * Raw joysticks without a gamepad mapping:
+ * - Hat or first two axes move (with PAD_DEAD dead-zone)
+ * - Buttons 0..5 map to LP, MP, HP, LK, MK, HK
+ */
 static const int joybuttons[6] = {IN_LP, IN_MP, IN_HP, IN_LK, IN_MK, IN_HK};
 
-static SDL_Gamepad  *pads[MAXPADS];
-static SDL_Joystick *joys[MAXPADS];
-static int           npads, njoys;
-static int           pprev[SDL_GAMEPAD_BUTTON_COUNT];
+static SDL_Gamepad  *pads[MAXPADS];                  /* Opened gamepads */
+static SDL_Joystick *joys[MAXPADS];                  /* Opened raw joysticks */
+static int           npads, njoys;                   /* Counts */
+static int           pprev[SDL_GAMEPAD_BUTTON_COUNT];/* Per-button previous state for edge detection */
 
+/* Open a new gamepad if there is room and it isn't already open */
 void pad_open(SDL_JoystickID id)
 {
     if (npads >= MAXPADS || SDL_GetGamepadFromID(id)) return;
@@ -49,6 +68,7 @@ void pad_open(SDL_JoystickID id)
     if (g) pads[npads++] = g;
 }
 
+/* Close a gamepad by ID and compact the array */
 void pad_close(SDL_JoystickID id)
 {
     for (int i = 0; i < npads; i++)
@@ -59,6 +79,7 @@ void pad_close(SDL_JoystickID id)
         }
 }
 
+/* Open a raw joystick (not recognized as a gamepad) if there is room */
 void joy_open(SDL_JoystickID id)
 {
     if (njoys >= MAXPADS || SDL_IsGamepad(id) || SDL_GetJoystickFromID(id)) return;
@@ -66,6 +87,7 @@ void joy_open(SDL_JoystickID id)
     if (j) joys[njoys++] = j;
 }
 
+/* Close a raw joystick by ID and compact the array */
 void joy_close(SDL_JoystickID id)
 {
     for (int i = 0; i < njoys; i++)
@@ -76,10 +98,14 @@ void joy_close(SDL_JoystickID id)
         }
 }
 
+/* Initialize input subsystems and open any currently connected devices */
 void pads_init(void)
 {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) { fprintf(stderr, "no gamepad support: %s\n", SDL_GetError()); return; }
+    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+        fprintf(stderr, "no gamepad support: %s\n", SDL_GetError());
+        return;
+    }
     int n = 0;
     SDL_JoystickID *ids = SDL_GetGamepads(&n);
     for (int i = 0; i < n; i++) pad_open(ids[i]);
@@ -89,31 +115,42 @@ void pads_init(void)
     SDL_free(ids);
 }
 
-/* Direction and attack bits from every connected pad and joystick. */
+/* Gather direction and attack bits from every connected pad and joystick. */
 int padmask(void)
 {
     int m = 0;
     for (int i = 0; i < npads; i++) {
         SDL_Gamepad *g = pads[i];
-        int ax = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX), ay = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY);
-        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_LEFT)  || ax < -PAD_DEAD) m |= IN_L;
-        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || ax >  PAD_DEAD) m |= IN_R;
-        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_UP)    || ay < -PAD_DEAD) m |= IN_U;
-        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_DOWN)  || ay >  PAD_DEAD) m |= IN_D;
+        int ax = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX),
+            ay = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY);
+        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_LEFT) ||
+            ax < -PAD_DEAD)
+            m |= IN_L;
+        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) ||
+            ax > PAD_DEAD)
+            m |= IN_R;
+        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_UP) ||
+            ay < -PAD_DEAD)
+            m |= IN_U;
+        if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_DOWN) ||
+            ay > PAD_DEAD)
+            m |= IN_D;
         for (size_t k = 0; k < sizeof padkeys / sizeof padkeys[0]; k++)
             if (SDL_GetGamepadButton(g, padkeys[k].b)) m |= padkeys[k].bit;
-        if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > PAD_TRIG) m |= IN_HK;
+        if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > PAD_TRIG)
+            m |= IN_HK;
     }
     for (int i = 0; i < njoys; i++) {
         SDL_Joystick *j = joys[i];
         Uint8 hat = SDL_GetNumJoystickHats(j) > 0 ? SDL_GetJoystickHat(j, 0) : 0;
         int ax = SDL_GetNumJoystickAxes(j) > 0 ? SDL_GetJoystickAxis(j, 0) : 0;
         int ay = SDL_GetNumJoystickAxes(j) > 1 ? SDL_GetJoystickAxis(j, 1) : 0;
-        if ((hat & SDL_HAT_LEFT)  || ax < -PAD_DEAD) m |= IN_L;
-        if ((hat & SDL_HAT_RIGHT) || ax >  PAD_DEAD) m |= IN_R;
-        if ((hat & SDL_HAT_UP)    || ay < -PAD_DEAD) m |= IN_U;
-        if ((hat & SDL_HAT_DOWN)  || ay >  PAD_DEAD) m |= IN_D;
-        for (int b = 0; b < 6 && b < SDL_GetNumJoystickButtons(j); b++)
+        if ((hat & SDL_HAT_LEFT) || ax < -PAD_DEAD) m |= IN_L;
+        if ((hat & SDL_HAT_RIGHT) || ax > PAD_DEAD) m |= IN_R;
+        if ((hat & SDL_HAT_UP) || ay < -PAD_DEAD) m |= IN_U;
+        if ((hat & SDL_HAT_DOWN) || ay > PAD_DEAD) m |= IN_D;
+        for (int b = 0; b < 6 &&
+                b < SDL_GetNumJoystickButtons(j); b++)
             if (SDL_GetJoystickButton(j, b)) m |= joybuttons[b];
     }
     return m;
@@ -122,14 +159,15 @@ int padmask(void)
 /* True once when a gamepad button goes down (call once per frame per button). */
 int pad_edge(SDL_GamepadButton b)
 {
-    int d = 0;
+    int down = 0;
     for (int i = 0; i < npads; i++)
-        if (SDL_GetGamepadButton(pads[i], b)) d = 1;
-    int e = d && !pprev[b];
-    pprev[b] = d;
-    return e;
+        if (SDL_GetGamepadButton(pads[i], b)) down = 1;
+    int edge = down && !pprev[b];   /* newly pressed this frame */
+    pprev[b] = down;
+    return edge;
 }
 
+/* Return OR-ed input bits from the current keyboard state */
 int keymask(void)
 {
     const bool *ks = SDL_GetKeyboardState(NULL);

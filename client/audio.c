@@ -1,6 +1,15 @@
+/*
+ * audio.c
+ * Audio system:
+ * - Load WAV sounds (mono 16-bit) and convert if needed
+ * - Simple voice mixer with a fixed number of channels
+ * - Music selection, snapshot-driven effects, and per-frame pumping
+ */
+
 #include <stdio.h>
 #include "client.h"
 
+/* Basenames for sound assets in sounds/ (without .wav) */
 static const char *sndfile[SN_COUNT] = {
     "swing1",      "swing2",      "swing3",     "hit1",    "hit2",
     "hit3",        "block",       "shot",       "jump",    "land",
@@ -8,23 +17,27 @@ static const char *sndfile[SN_COUNT] = {
     "menu_move",   "menu_select", "menu_ready", "bot_add", "music_menu",
     "music_fight",
 };
+
 typedef struct {
-  Sint16 *pcm;
-  Uint32 n;
+  Sint16 *pcm;   /* Interleaved mono 16-bit samples */
+  Uint32 n;      /* Sample count */
 } Snd;
 
 typedef struct {
-  int s, on, loop;
-  Uint32 pos;
-  float vol;
+  int s;         /* Sound index (SN_*) */
+  int on;        /* 1 while playing */
+  int loop;      /* Loop when reaching the end */
+  Uint32 pos;    /* Current sample position */
+  float vol;     /* Volume (0..1) */
 } Voice;
 
-static Snd snd[SN_COUNT];
-static Voice vox[NVOX]; /* voice 0 is the music */
-static SDL_AudioStream *astream;
-static int cur_music = -1;
-float mastervol = SOUND_ON;
+static Snd snd[SN_COUNT];              /* Loaded sounds */
+static Voice vox[NVOX];                /* Voice 0 is music; others are SFX */
+static SDL_AudioStream *astream;       /* Output stream */
+static int cur_music = -1;             /* Currently selected music track */
+float mastervol = SOUND_ON;            /* Master volume (toggled by M) */
 
+/* Load a WAV by name (from base path or current dir), converting to mono 16-bit AUDIO_RATE */
 static int load_snd(int i)
 {
     char path[512];
@@ -41,7 +54,11 @@ static int load_snd(int i)
     if (spec.format != want.format || spec.channels != 1 || spec.freq != AUDIO_RATE) {
         Uint8 *cv;
         int cl;
-        if (!SDL_ConvertAudioSamples(&spec, buf, (int)len, &want, &cv, &cl)) { SDL_free(buf); return 0; }
+        if (!SDL_ConvertAudioSamples(&spec, buf, (int)len,
+                                     &want, &cv, &cl)) {
+            SDL_free(buf);
+            return 0;
+        }
         SDL_free(buf);
         buf = cv;
         len = (Uint32)cl;
@@ -53,6 +70,7 @@ static int load_snd(int i)
 
 void audio_init(void)
 {
+    /* Initialize SDL audio, open default playback device, and load all sounds */
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) { fprintf(stderr, "no audio: %s\n", SDL_GetError()); return; }
     SDL_AudioSpec spec = { SDL_AUDIO_S16, 1, AUDIO_RATE };
     astream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
@@ -63,6 +81,7 @@ void audio_init(void)
     SDL_ResumeAudioStreamDevice(astream);
 }
 
+/* Play a one-shot sound effect on a free (or stolen) voice */
 void sfx(int s, float vol)
 {
     static int rr = 1;
@@ -73,6 +92,7 @@ void sfx(int s, float vol)
     vox[v] = (Voice){ .s = s, .on = 1, .vol = vol };
 }
 
+/* Switch background music to track s (loops on voice 0) */
 void music(int s)
 {
     if (s == cur_music) return;
@@ -81,6 +101,7 @@ void music(int s)
 }
 
 /* Keep about 125 ms of mixed audio queued. Called once per frame from the main thread. */
+/* Mix all active voices into a small buffer and queue it */
 void audio_pump(void)
 {
     if (!astream) return;
@@ -102,7 +123,7 @@ void audio_pump(void)
     }
 }
 
-/* A fighter just started an attack: pick the swing sound from its strength. */
+/* Choose a swing sound based on move strength and play it */
 void swing_sound(const Move *m)
 {
     int row = move_row(m);
@@ -114,6 +135,7 @@ void swing_sound(const Move *m)
 static int php[MAX_PLAYERS], plives[MAX_PLAYERS], pns, pnb, pnsh;
 static int sfresh = 1;
 
+/* Compare current snapshot to previous and play SFX for hits, KOs, shots, bombs, ships, booms */
 void audio_snapshot(void)
 {
     for (int i = 0; i < nf; i++) {
@@ -140,5 +162,5 @@ void audio_snapshot(void)
     sfresh = 0;
 }
 
-/* a new phase restarts the snapshot comparison so it doesn't play a burst of sounds */
+/* A new phase restarts the snapshot comparison so it doesn't play a burst of sounds */
 void audio_reset(void) { sfresh = 1; }

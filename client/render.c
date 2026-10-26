@@ -1,23 +1,32 @@
+/*
+ * render.c
+ * Rendering and UI:
+ * - Draw fighters, projectiles, ships, explosions, and UI overlays
+ * - Select screen grid, roster, and options menu
+ * Uses SDL textures when available; falls back to simple boxes otherwise.
+ */
+
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include "client.h"
 
+/* Per-slot UI colors used for markers and fallback boxes */
 static const Uint8 pal[MAX_PLAYERS][3] = {
     {230, 70, 70},   {70, 140, 230}, {80, 200, 100}, {230, 200, 60},
     {180, 90, 220},  {240, 140, 50}, {70, 210, 210}, {230, 110, 170},
     {150, 150, 150}, {140, 90, 50},
 };
 
-int show_boxes, options_open, options_item;
-unsigned aclk;
-SDL_Renderer *renderer;
-static Anim an[MAX_PLAYERS];   /* per-slot animation state */
-static SDL_Texture *tex[NCHARS]; /* NULL = fall back to coloured boxes */
-static SDL_Texture *shots, *shipt, *fxt, *bg;
+int show_boxes, options_open, options_item;  /* Debug hitboxes and options menu state */
+unsigned aclk;                               /* Animation clock (ticks) */
+SDL_Renderer *renderer;                      /* Global renderer */
+static Anim an[MAX_PLAYERS];                 /* Per-slot animation state */
+static SDL_Texture *tex[NCHARS];             /* Fighter sheets (NULL => fallback boxes) */
+static SDL_Texture *shots, *shipt, *fxt, *bg;/* Other sprite sheets */
 
-/* The sheets are 32-bit BMPs with a real alpha channel, so edges are smooth: no colour key. */
+/* Load a BMP texture from sprites/ with alpha blending enabled; NULL on failure */
 static SDL_Texture *load_tex(const char *file)
 {
     char path[512];
@@ -35,6 +44,7 @@ static SDL_Texture *load_tex(const char *file)
     return t;
 }
 
+/* Load all fighter and effect textures (missing files fall back to boxes) */
 void load_sprites(void)
 {
     for (int i = 0; i < NCHARS; i++) {
@@ -50,7 +60,7 @@ void load_sprites(void)
     bg    = load_tex("background.bmp");
 }
 
-/* My fighter is drawn from the predicted state, everyone else from the snapshot. */
+/* Effective fighter state: predicted for self, snapshot for others */
 static Fig eff(int i)
 {
     Fig f = F[i];
@@ -61,7 +71,7 @@ static Fig eff(int i)
     return f;
 }
 
-/* Per-tick bookkeeping: animation state, plus the sounds that follow a fighter's own motion. */
+/* Update per-slot animation timers and play movement-related sounds */
 void anim_tick(void)
 {
     aclk++;
@@ -88,7 +98,7 @@ void anim_tick(void)
     }
 }
 
-/* An attack's six frames: two of windup, two of impact, two of follow-through. */
+/* Six-phase move animation (windup/impact/follow-through) derived from timings */
 static int move_frame(const Move *m, int t)
 {
     int S = m->startup > 0 ? m->startup : 1, R = m->recover > 0 ? m->recover : 1;
@@ -100,6 +110,7 @@ static int move_frame(const Move *m, int t)
     return 4 + (t * 2 / R > 1 ? 1 : t * 2 / R);
 }
 
+/* Choose sprite row/column for a fighter based on state and animation */
 static void pick(const Fig *f, int *row, int *col)
 {
     const Character *c = &chars[f->ch];
@@ -119,6 +130,7 @@ static void pick(const Fig *f, int *row, int *col)
     else { *row = ROW_IDLE; *col = (aclk / IDLE_TICKS) % IDLE_FR; }
 }
 
+/* Draw a filled rectangle in screen space */
 static void box(float x, float y, float w, float h, int r, int g, int b, int a)
 {
     SDL_FRect q = { x, y, w, h };
@@ -126,6 +138,7 @@ static void box(float x, float y, float w, float h, int r, int g, int b, int a)
     SDL_RenderFillRect(renderer, &q);
 }
 
+/* Draw debug text using SDL's debug text renderer */
 static void text(float x, float y, const char *fmt, ...)
 {
     char b[200];
@@ -137,6 +150,7 @@ static void text(float x, float y, const char *fmt, ...)
     SDL_RenderDebugText(renderer, x, y, b);
 }
 
+/* Draw a fighter using a sprite sheet */
 static void draw_sprite(const Fig *f, SDL_Texture *t)
 {
     const Character *c = &chars[f->ch];
@@ -159,6 +173,7 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
     box(xc - 7, dst.y + cs * 0.02f, 14, 6, pc[0], pc[1], pc[2], f->invis ? 90 : 255);
 }
 
+/* Draw a fighter as a colored box (fallback when no texture) */
 static void draw_box(const Fig *f)                  /* fallback when a sheet is missing */
 {
     const Character *c = &chars[f->ch];
@@ -179,6 +194,7 @@ static void draw_box(const Fig *f)                  /* fallback when a sheet is 
     }
 }
 
+/* Draw a fighter with shadow, sprite/box, and optional hitbox overlay */
 static void draw_fighter(const Fig *f)
 {
     const Character *c = &chars[f->ch];
@@ -195,6 +211,7 @@ static void draw_fighter(const Fig *f)
     }
 }
 
+/* Draw a projectile (J) */
 static void draw_shot(const Shot *s)
 {
     int ch = 0, face = 1;
@@ -217,6 +234,7 @@ static void draw_shot(const Shot *s)
     }
 }
 
+/* Draw a bomb (B) */
 static void draw_bomb(const Shot *s)
 {
     float x = s->x * SCALE, y = GROUND - s->y * SCALE;
@@ -228,6 +246,7 @@ static void draw_bomb(const Shot *s)
     }
 }
 
+/* Draw an explosion (X) */
 static void draw_boom(const Boom *b)
 {
     int f = b->t > 9 ? 1 : b->t > 4 ? 2 : 3;        /* t counts down from BOOM_TICKS */
@@ -240,6 +259,7 @@ static void draw_boom(const Boom *b)
     }
 }
 
+/* Draw a ship (Z) */
 static void draw_ship(const Ship *s)
 {
     float x = s->x * SCALE, y = GROUND - SHIP_Y * SCALE;
@@ -252,6 +272,7 @@ static void draw_ship(const Ship *s)
     }
 }
 
+/* Draw the active match: background, actors, HUD, and winner banner */
 void draw_match(void)
 {
     if (bg) {
@@ -291,8 +312,9 @@ void draw_match(void)
     }
 }
 
-/* ================================================================== options menu (Escape) */
+/* =============================== Options menu (Escape) =============================== */
 
+/* Activate the selected option (may close menu or request quit) */
 void option_activate(int *quit)
 {
     switch (options_item) {
@@ -303,6 +325,7 @@ void option_activate(int *quit)
     }
 }
 
+/* Handle options menu navigation and activation */
 void options_input(int edge, int confirm, int *quit)
 {
     if (edge & IN_U) options_item = (options_item + OPT_COUNT - 1) % OPT_COUNT;
@@ -310,6 +333,7 @@ void options_input(int edge, int confirm, int *quit)
     if (confirm) option_activate(quit);
 }
 
+/* Render the options menu overlay and control hints */
 void draw_options(void)
 {
     const float w = 560, h = 400, x = (SW - w) / 2, y = 90;
@@ -342,17 +366,20 @@ void draw_options(void)
     text(x + 24, y + 362, "Squirrel: hold jump in the air to fly.  Jump and press an attack");
 }
 
-/* ================================================================== fighter select */
+/* =============================== Fighter select =============================== */
 
+/* Grid layout helpers for select screen cells */
 static int cell_x(int i) { return SW - (SEL_COLS * CELL_W + (SEL_COLS - 1) * CELL_GAP) - 60 + (i % SEL_COLS) * (CELL_W + CELL_GAP); }
 static int cell_y(int i) { return 130 + (i / SEL_COLS) * (CELL_H + CELL_GAP); }
 
+/* Short label for an input bit (used in move list) */
 static const char *btn_label(int in)
 {
     return in == IN_LP ? "LP" : in == IN_MP ? "MP" : in == IN_HP ? "HP" : in == IN_LK ? "LK" :
            in == IN_MK ? "MK" : in == IN_HK ? "HK" : in == IN_P ? "P" : in == IN_K ? "K" : "?";
 }
 
+/* Draw an idle portrait (animated if requested) */
 static void idle_portrait(int ch, float x, float y, float size, int animate)
 {
     if (!tex[ch]) {
@@ -367,7 +394,7 @@ static void idle_portrait(int ch, float x, float y, float size, int animate)
     SDL_RenderTexture(renderer, tex[ch], &src, &dst);
 }
 
-/* The roster along the bottom: every player's slot, fighter and ready state. */
+/* Roster along the bottom: each player's slot, fighter, and ready state */
 static void draw_roster(void)
 {
     const float left = 28, top = SH - 94, width = (SW - 2 * left) / ROSTER_COLS;
@@ -394,7 +421,7 @@ static void draw_roster(void)
     }
 }
 
-/* A grid of portraits and a big animated preview. */
+/* Main select screen: big preview, move list, grid of portraits, and help */
 void draw_select(int cur, int asel)
 {
     const Lob *mine = NULL;
