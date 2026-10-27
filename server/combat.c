@@ -29,10 +29,13 @@ static void hurt(Player *a, Player *v, const Move *m, int dir) {
         vb->vx = dir * m->kb / 8;
     } else {
         v->hp -= m->dmg;
-        vb->stun = m->throw ? THROW_STUN : HITSTUN;
+        /* Apply standard hitstun and horizontal knockback */
+        vb->stun = HITSTUN;
         vb->vx = dir * m->kb / 4;
-        if (m->throw)
-            vb->vy = THROW_LIFT;
+        /* Knockdown only on crouching strong kick (medium kick input while crouching move) */
+        if (!m->throw && m->input == IN_MK && m->crouch) {
+            vb->vy = THROW_LIFT / 2;
+        }
         vb->move = -1;
     }
     if (v->hp <= 0)
