@@ -17,6 +17,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderVSync(renderer, 1);
     load_sprites();

@@ -203,6 +203,33 @@ CHARS = {
         ],
         canims=["c_claw", "c_claw", "c_hp", "c_lk", "c_mk", "c_hk"],
     ),
+    "rump": dict(
+        skin=(238, 156, 96),
+        top=(25, 35, 85),
+        arm_col=(25, 35, 85),
+        pants=(25, 35, 85),
+        shoe=(20, 20, 25),
+        torso_w=12,
+        arm_w=6,
+        leg_w=7,
+        head_r=8,
+        torso=18,
+        arm=17,
+        leg=22,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "hairtoss",
+            "uppercut",
+            "summon",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
 }
 FUR, FUR_D, FUR_L = (222, 140, 70), (178, 98, 44), (246, 214, 168)
 
@@ -544,6 +571,11 @@ MOVES = {
         P(lean=10, af=(85, 80), ab=(-20, -30), fx="nut_fly", tail=12),
         P(lean=2, af=(50, 60), ab=(-10, -20)),
     ],
+    "hairtoss": [
+        P(lean=-8, af=(-120, -150), ab=(20, 30), fx="hairgrab"),
+        P(lean=14, af=(85, 80), ab=(-25, -35), fx="hairtoss"),
+        P(lean=4, af=(55, 65), ab=(-10, -20), fx="hairbald"),
+    ],
     "spray": [
         P(lean=-8, crouch=2, af=(-80, -110), ab=(-60, -100), fx="nut", tail=-16),
         P(lean=12, af=(100, 95), ab=(95, 90), fx="nuts", tail=16),
@@ -765,9 +797,17 @@ def body_deco(cv, name, hip, sh, tw):
             [mid[0] - 1, mid[1] - 5, mid[0] + tw / 2 + 1, mid[1] + 5],
             fill=(250, 230, 200),
         )
+    elif name == "rump":
+
+        def along(f, dx=0):
+            return (hip[0] + (sh[0] - hip[0]) * f + dx, hip[1] + (sh[1] - hip[1]) * f)
+
+        cv.line([sh, (sh[0] + 3, sh[1] + 4)], fill=(245, 245, 245), width=3)
+        cv.line([along(0.9, 2), along(0.1, 3)], fill=(200, 30, 40), width=3)
+        cv.ellipse(ring(along(0.75, -3), 1), fill=(255, 215, 60))
 
 
-def head(cv, name, h, r, skin):
+def head(cv, name, h, r, skin, bald=False):
     hx, hy = h
     if name == "monkey":
         cv.ellipse(ring(h, r), fill=(110, 70, 40))
@@ -833,6 +873,53 @@ def head(cv, name, h, r, skin):
         cv.line([(hx - r, hy - 3), (hx + r, hy - 3)], fill=(200, 30, 40), width=2)
         cv.line([(hx - r, hy - 3), (hx - r - 8, hy - 6)], fill=(200, 30, 40), width=2)
         cv.line([(hx - r, hy - 3), (hx - r - 7, hy + 1)], fill=(200, 30, 40), width=2)
+    elif name == "rump":
+        HAIR = (245, 205, 90)
+        if bald:  # hair is gone: shiny scalp, a few sad wisps, red-faced yell
+            cv.ellipse([hx - 3, hy - r + 1, hx + 2, hy - r + 4], fill=(255, 205, 160))
+            for wx in (-3, 0, 3):
+                cv.line(
+                    [(hx + wx, hy - r), (hx + wx - 2, hy - r - 3)], fill=HAIR, width=0.8
+                )
+            cv.line([(hx + 1, hy - 3), (hx + 6, hy - 1)], fill=(200, 140, 60), width=1)
+            cv.ellipse(ring((hx + r - 2, hy + 4), 2), fill=(120, 30, 30))
+        else:
+            cv.pieslice(ring(h, r + 0.5), 180, 360, fill=HAIR)
+            cv.polygon(
+                [
+                    (hx - r, hy - 1),
+                    (hx - r + 1, hy - r - 2),
+                    (hx + r - 2, hy - r - 3),
+                    (hx + r + 4, hy - r + 3),
+                    (hx + r, hy - 2),
+                    (hx + 2, hy - r + 2),
+                ],
+                fill=HAIR,
+            )
+            cv.line([(hx + 1, hy - 1), (hx + 5, hy - 2)], fill=(200, 140, 60), width=1)
+            cv.ellipse(ring((hx + r - 1, hy + 4), 1.3), fill=(150, 55, 50))
+        cv.rectangle([hx + 3, hy, hx + 4, hy + 1], fill=(20, 20, 30))
+
+
+def toupee(cv, c, s=1.0):
+    x, y = c
+    cv.ellipse([x - 6 * s, y - 3.5 * s, x + 6 * s, y + 3.5 * s], fill=(245, 205, 90))
+    cv.polygon(
+        [(x - 6 * s, y), (x - 9 * s, y - 2 * s), (x - 5 * s, y - 4 * s)],
+        fill=(225, 175, 60),
+    )
+    cv.polygon(
+        [(x + 6 * s, y), (x + 9 * s, y + 3 * s), (x + 3 * s, y + 4 * s)],
+        fill=(225, 175, 60),
+    )
+    cv.line(
+        [(x - 4 * s, y - 1 * s), (x + 4 * s, y - 1 * s)], fill=(255, 238, 160), width=1
+    )
+    cv.line(
+        [(x - 3 * s, y + 1.5 * s), (x + 5 * s, y + 1.5 * s)],
+        fill=(210, 160, 55),
+        width=1,
+    )
 
 
 def fx(cv, kind, fh, af, hip, cx):
@@ -895,6 +982,18 @@ def fx(cv, kind, fh, af, hip, cx):
                     fill=(255, 255, 255),
                     width=1.2,
                 )
+        elif k == "hairgrab":  # hand clutching the toupee, ready to hurl it
+            toupee(cv, (fh[0], fh[1] - 3), 1.0)
+        elif (
+            k == "hairtoss"
+        ):  # the hairpiece leaves the hand, spinning, with speed lines
+            toupee(cv, (fh[0] + 14, fh[1] - 1), 1.5)
+            for dy in (-6, -2, 2, 6):
+                cv.line(
+                    [(fh[0] + 1, fh[1] + dy), (fh[0] + 7, fh[1] + dy)],
+                    fill=(255, 255, 255),
+                    width=0.8,
+                )
         elif k == "nut":
             acorn(cv, (fh[0] + 3, fh[1] - 1))
         elif k == "nut_fly":
@@ -947,7 +1046,10 @@ def draw_fig(cv, name, p):
 
     ff = limb(cv, (hip[0] + 1, hip[1]), lf, c["leg"], lw, c["pants"])
     foot(cv, ff, c["shoe"])
-    head(cv, name, hd, c["head_r"], skin)
+    bald = name == "rump" and any(
+        k in (p["fx"] or "") for k in ("hairtoss", "hairbald")
+    )
+    head(cv, name, hd, c["head_r"], skin, bald)
     fh = limb(cv, (sh[0] + 1, sh[1] + 1), af, c["arm"], aw, c["arm_col"])
     cv.ellipse(ring(fh, aw / 2 + 1), fill=skin)
     fx(cv, p["fx"], fh, af, hip, cx)
@@ -1011,6 +1113,8 @@ def shots():
             cv.rectangle([13, 6, 15, 10], fill=(255, 255, 255))
         elif name == "squirrel":
             acorn(cv, (8, 8), 1.6)
+        elif name == "rump":  # flying toupee
+            toupee(cv, (8, 8), 1.1)
         else:
             cv.ellipse(ring(c, 6), fill=(70, 30, 110))
             cv.ellipse(ring(c, 3), fill=(60, 255, 100))

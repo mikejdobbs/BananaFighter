@@ -226,6 +226,33 @@ static const Character chars[] = {
         { .name="nut",       .input=IN_P,.cmd=CMD_QCF,.startup=6,.active=1,.recover=11,.dmg=30,.kb=8,.y=71,.h=19,.proj_speed=15,.proj_life=70,.spin=1 },
         { .name="nut spray", .input=IN_HP,.cmd=CMD_HCF,.startup=10,.active=1,.recover=22,.dmg=22,.kb=6,.y=71,.h=19,.proj_speed=13,.proj_life=60,.spread=3,.spread_vy=4,.spin=1,.cost=35,.anim=A_SUPER },
     }},
+    { .name = "Rump", .hp = 900, .lives = 3, .speed = 5, .jump = 26, .w = 64, .h = 160, .moves = {
+        { .name="grab",      .input=IN_HP, .startup=5,  .active=3, .recover=20, .dmg=70,  .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="poke", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=44, .y=88, .h=26 },
+        { .name="shove", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=86, .h=32 },
+        { .name="haymaker", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=78, .kb=18, .reach=68, .y=82, .h=40 },
+        { .name="toe tap", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=28, .kb=6, .reach=48, .y=16, .h=28 },
+        { .name="heel", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=54, .kb=12, .reach=70, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=86, .kb=20, .reach=85, .y=22, .h=54 },
+        { .name="crouch poke", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=44, .y=44, .h=26 },
+        { .name="crouch shove", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=43, .h=32 },
+        { .name="crouch haymaker", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=78, .kb=18, .reach=68, .y=40, .h=40 },
+        { .name="crouch toe tap", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=28, .kb=6, .reach=48, .y=8, .h=28 },
+        { .name="crouch heel", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=54, .kb=12, .reach=70, .y=4, .h=40 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=86, .kb=20, .reach=85, .y=10, .h=54 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=34, .kb=7, .reach=50, .y=22, .h=48 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=46, .kb=9, .reach=50, .y=22, .h=48 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=60, .kb=12, .reach=54, .y=22, .h=48 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=44, .kb=10, .reach=58, .y=-42, .h=72 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=60, .kb=12, .reach=58, .y=-42, .h=72 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=78, .kb=16, .reach=62, .y=-42, .h=72 },
+        /* Special: throws fake orange hair (projectile) */
+        { .name="hair toss", .input=IN_P, .cmd=CMD_QCF, .startup=9, .active=1, .recover=20, .dmg=55, .kb=10, .y=96, .h=20, .proj_speed=13, .proj_life=70, .spin=1, .anim=A_CAST },
+        /* Special: upper cup (uppercut-style melee) with a yell (HP-based special) */
+        { .name="upper cup", .input=IN_HP, .cmd=CMD_HCF, .startup=6, .active=5, .recover=24, .dmg=140, .kb=34, .reach=52, .y=38, .h=120, .cost=40, .anim=A_SPECIAL },
+        /* Charged special: calls the airforce (ship strike) */
+        { .name="call airforce", .input=IN_HK, .cmd=CMD_HCF, .startup=18, .active=1, .recover=40, .dmg=80, .kb=60, .ship=5, .cost=60, .anim=A_SUPER },
+    }},
 };
 
 #define NCHARS (int)(sizeof chars / sizeof chars[0])
