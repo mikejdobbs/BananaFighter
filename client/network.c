@@ -99,7 +99,8 @@ static void reconcile(void)
     Body b = { .x = f->x, .y = f->y, .vx = Q.vx, .vy = Q.vy, .face = f->face,
                .move = f->st >= 0 ? f->st : -1, .frame = Q.frame, .hit = Q.hit,
                .stun = Q.stun, .block = f->st == -3, .flying = f->st == -4,
-               .crouch = f->st == -5 || f->st == -7, .invis = Q.invis,
+               .crouch = f->st == -5 || f->st == -7,
+               .down = f->st == -7 || f->st == -8, .invis = Q.invis,
                .grace = Q.grace, .meter = f->meter, .fuel = Q.fuel };
     unsigned a = ack > sent ? sent : ack;
     if (sent - a > HIST - CMD_WIN) a = sent - (HIST - CMD_WIN);

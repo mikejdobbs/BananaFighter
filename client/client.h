@@ -38,7 +38,7 @@ enum {
 #define IDLE_TICKS 9    /* ticks per idle frame */
 #define WALK_TICKS 3    /* ticks per walk frame */
 #define WALK_HOLD 6     /* ticks without movement before the walk cycle stops */
-#define LAND_TICKS 6    /* how long the landing crouch shows */
+#define LAND_TICKS 12   /* how long the landing crouch / recover shows */
 #define MIN_ACTIVE 6    /* show the attack's impact frames at least this long */
 #define SHIP_DRAW_W 200 /* on-screen size of a ship */
 #define SHIP_DRAW_H 100
@@ -83,8 +83,8 @@ typedef struct {
   int vx, vy, frame, stun, grace, invis, hit, fuel;
 } Extra;
 typedef struct {
-  int st, t, lx, ly, dy, still, walk, land;
-} Anim;
+  int st, t, lx, ly, dy, still, walk, land, kd;
+} Anim; /* kd: ticks since a sweep knockdown started, or -1 */
 
 enum {
   SN_SWING1,

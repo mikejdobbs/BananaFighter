@@ -5,7 +5,7 @@
 
 #include "config.h"
 
-typedef struct { int x, y, vx, vy, face, move, frame, hit, stun, block, flying, crouch, invis, grace, meter, fuel; } Body;
+typedef struct { int x, y, vx, vy, face, move, frame, hit, stun, block, flying, crouch, down, invis, grace, meter, fuel; } Body;
 
 enum { EV_SPAWN = 1, EV_MELEE = 2 };    /* effects the caller (server) must apply */
 
@@ -77,7 +77,7 @@ static inline int body_step(Body *body, const Character *character,
 {
     int ev = 0;
 
-    int knocked = body->stun && body->crouch; /* sweep trip: stay down until get-up */
+    int knocked = body->down && body->stun; /* sweep trip: stay down until get-up */
     body->block = body->flying = body->crouch = 0;
 
     /* Count down for invisibility */
@@ -95,6 +95,8 @@ static inline int body_step(Body *body, const Character *character,
             /* Slow player's walk if stunned */
             body->vx = body->vx * 3 / 4;
         }
+        if (!body->stun)
+            body->down = 0;
 
     } else if (body->move >= 0) { /* Continue moves already in progress */
         const Move *m = &character->moves[body->move];
@@ -105,7 +107,7 @@ static inline int body_step(Body *body, const Character *character,
 
         int f = body->frame++;
         if (f == m->startup && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
-        else if (!m->proj_speed && !m->ship && m->dmg && !body->hit
+        else if (!m->proj_speed && !m->ship && (m->dmg || m->boom) && !body->hit
                  && f >= m->startup && f < m->startup + m->active) ev |= EV_MELEE;
         if (f >= m->startup + m->active + m->recover) body->move = -1;
 

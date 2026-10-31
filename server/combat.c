@@ -1,3 +1,4 @@
+#include "config.h"
 #include "server.h"
 
 static void ko(Player *player) {
@@ -29,16 +30,24 @@ static void hurt(Player *a, Player *v, const Move *m, int dir) {
         vb->vx = dir * m->kb / 8;
     } else {
         v->hp -= m->dmg;
-        /* Apply standard hitstun and horizontal knockback */
-        vb->stun = HITSTUN;
-        vb->vx = dir * m->kb / 4;
-        vb->crouch = 0;
-        /* Crouching heavy kick: trip — fall in place, then get up */
-        if (!m->throw && m->input == IN_HK && m->crouch) {
-            vb->stun = KNOCKDOWN_STUN;
-            vb->vx = 0;
-            vb->vy = 0;
-            vb->crouch = 1; /* stay down until get-up window */
+        if (m->throw) {
+            /* Throws: no hitstun animation, apply strong vertical lift and some horizontal reposition */
+            vb->stun = THROW_STUN;
+            vb->vx = dir * (m->kb > 0 ? m->kb : THROW_KB);
+            vb->vy = THROW_LIFT;
+        } else {
+            /* Apply standard hitstun and horizontal knockback */
+            vb->stun = HITSTUN;
+            vb->vx = dir * m->kb / 4;
+            vb->crouch = 0;
+            /* Crouching heavy kick: trip — fall in place, then get up */
+            if (m->input == IN_HK && m->crouch) {
+                vb->stun = KNOCKDOWN_STUN;
+                vb->vx = 0;
+                vb->vy = 0;
+                vb->down = 1;
+                vb->crouch = 1; /* stay down until get-up window */
+            }
         }
         vb->move = -1;
     }
@@ -101,36 +110,51 @@ static void drop_bomb(const Ship *s) {
     }
 }
 
-/* Area damage around a bomb; the owner is immune. */
-static void explode(const Proj *j) {
-    int cy = j->y < 0 ? 0 : j->y;
+static void area_damage(int owner, int x, int y, const Move *m)
+{
+    int cy = y < 0 ? 0 : y;
 
     for (int k = 0; k < MAXBOOM; k++)
         if (!explosions[k].on) {
-            explosions[k] = (Boom){1, j->x, cy, BOOM_TICKS};
+            explosions[k] = (Boom){1, x, cy, BOOM_TICKS};
             break;
         }
 
     for (int k = 0; k < MAX_PLAYERS; k++) {
         Player *v = &players[k];
         const Character *vc = &chars[v->s_character];
-        if (k == j->owner || !fighting(v))
+        if (k == owner || !fighting(v))
             continue;
 
-        if (overlap(j->x - BOMB_R, j->x + BOMB_R, cy - BOMB_R, cy + BOMB_R,
+        if (overlap(x - BOMB_R, x + BOMB_R, cy - BOMB_R, cy + BOMB_R,
                     v->body.x - vc->w / 2, v->body.x + vc->w / 2, v->body.y,
                     hurt_top(v, vc)))
-            hurt(&players[j->owner], v, j->m, v->body.x >= j->x ? 1 : -1);
+            hurt(&players[owner], v, m, v->body.x >= x ? 1 : -1);
     }
+}
+
+/* Area damage around a bomb; the owner is immune. */
+static void explode(const Proj *j)
+{
+    area_damage(j->owner, j->x, j->y, j->m);
 }
 
 void melee(int player_index, const Move *move) {
     Player *player = &players[player_index];
     const Character *character = &chars[player->s_character];
 
+    if (move->boom) {
+        area_damage(player_index, player->body.x,
+                    player->body.y + move->y + move->h / 2, move);
+        player->body.hit = 1;
+        if (!move->throw && move->reach <= 0)
+            return;
+    }
+
     int player_x0 = player->body.x + player->body.face * character->w / 2;
     int player_x1 = player_x0 + player->body.face * move->reach;
     int best = -1;
+    int want_throw = (move->input == IN_HP); /* high punch triggers throw when close */
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
         Player *nearby_player = &players[i];
@@ -148,19 +172,23 @@ void melee(int player_index, const Move *move) {
                      hurt_top(nearby_player, nearby_character)))
             continue;
         
-        if (move->throw) {
+        /* If this move is a designated throw OR we're pressing high punch near an opponent, pick closest and throw */
+        if (move->throw || want_throw) {
             if (best < 0 || abs(nearby_player->body.x - player->body.x) <
                                abs(players[best].body.x - player->body.x)) {
                 best = i;
             }
         } else {
-            // Non-throw melee should hurt all players in range
+            /* Non-throw melee should hurt all players in range */
             hurt(player, nearby_player, move, player->body.face);
             player->body.hit = 1;
         }
     }
     if (best >= 0) { /* a grab holds only the closest victim */
-        hurt(player, &players[best], move, player->body.face);
+        Move throwMove = *move;
+        throwMove.throw = 1; /* ensure unblockable */
+        /* Treat high punch close as a throw even if original move wasn't flagged */
+        hurt(player, &players[best], &throwMove, player->body.face);
         player->body.hit = 1;
     }
 }

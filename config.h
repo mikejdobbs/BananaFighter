@@ -13,9 +13,10 @@
 #define HITSTUN       12
 #define THROW_STUN    30        /* ticks a thrown victim is helpless */
 #define THROW_LIFT    50        /* upward launch speed of a throw */
-#define KNOCKDOWN_STUN 40       /* crouch HK sweep: time spent down before get-up */
-#define GETUP_TICKS   10        /* last ticks of knockdown: rising / get-up */
-#define THROW_RANGE   100        /* close enough to grab: heavy punch becomes a throw, beating block */
+#define THROW_KB      12        /* default horizontal knockback for throws */
+#define KNOCKDOWN_STUN 78       /* crouch HK sweep: fall, lie, knees, then feet */
+#define GETUP_TICKS   42        /* last ticks: on the knees, then up onto the feet */
+#define THROW_RANGE   200        /* close enough to grab: heavy punch becomes a throw, beating block */
 #define BLOCK_PCT     10        /* % of damage taken while blocking */
 #define METER_MAX     100       /* super meter: +dmg/4 dealt, +dmg/8 taken */
 #define RESPAWN_GRACE 90        /* invulnerable ticks after losing a life */
@@ -66,6 +67,7 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    throw:  grabs the closest victim in range (ignores blocking), damages and launches them.
    cost:   super meter needed (and spent). Non-throw melee hits everyone in range.
    ship:   calls a ship that drops this many bombs; dmg and kb apply per bomb.
+   boom:   on the active frame, area damage at the attacker (like a bomb; owner immune).
    spin:   the projectile's sprite spins in flight (client only). */
 typedef struct {
     const char *name;
@@ -76,7 +78,7 @@ typedef struct {
     int proj_speed, proj_life;
     int spread, spread_vy;
     int invis, throw, cost;
-    int ship, spin, anim;
+    int ship, boom, spin, anim;
 } Move;
 
 /* fly: tail thrust per tick (0 = cannot fly); fuel: ticks of flight on a full tank. */
@@ -254,6 +256,126 @@ static const Character chars[] = {
         { .name="upper cup", .input=IN_HP, .cmd=CMD_HCF, .startup=6, .active=5, .recover=24, .dmg=140, .kb=34, .reach=52, .y=38, .h=120, .cost=40, .anim=A_SPECIAL },
         /* Charged special: calls the airforce (ship strike) */
         { .name="call airforce", .input=IN_HK, .cmd=CMD_HCF, .startup=18, .active=1, .recover=40, .dmg=80, .kb=60, .ship=5, .cost=60, .anim=A_SUPER },
+    }},
+    { .name = "JV", .hp = 950, .lives = 3, .speed = 5, .jump = 26, .w = 64, .h = 158, .moves = {
+        { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=43, .y=88, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=57, .y=86, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=78, .kb=18, .reach=67, .y=84, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=28, .kb=6, .reach=50, .y=16, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=54, .kb=12, .reach=72, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=86, .kb=20, .reach=87, .y=22, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=43, .y=44, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=57, .y=43, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=78, .kb=18, .reach=67, .y=40, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=28, .kb=6, .reach=50, .y=8, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=54, .kb=12, .reach=72, .y=4, .h=40 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=86, .kb=20, .reach=87, .y=10, .h=54 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=34, .kb=7, .reach=48, .y=20, .h=49 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=46, .kb=9, .reach=48, .y=20, .h=49 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=60, .kb=12, .reach=52, .y=20, .h=49 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=44, .kb=10, .reach=56, .y=-44, .h=74 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=58, .kb=12, .reach=56, .y=-44, .h=74 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=76, .kb=16, .reach=60, .y=-44, .h=74 },
+        { .name="chicken bone", .input=IN_P, .cmd=CMD_QCF, .startup=8, .active=1, .recover=18, .dmg=50, .kb=9, .y=92, .h=18, .proj_speed=14, .proj_life=65, .spin=1, .anim=A_CAST },
+        { .name="uppercut", .input=IN_HP, .cmd=CMD_HCF, .startup=6, .active=5, .recover=22, .dmg=130, .kb=32, .reach=50, .y=40, .h=118, .cost=40, .anim=A_SPECIAL },
+        { .name="hillbilly truck", .input=IN_HK, .cmd=CMD_HCF, .startup=16, .active=1, .recover=38, .dmg=75, .kb=55, .ship=5, .cost=55, .anim=A_SUPER },
+    }},
+    { .name = "Kammy", .hp = 850, .lives = 3, .speed = 6, .jump = 28, .w = 60, .h = 156, .moves = {
+        { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=42, .y=90, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=44, .kb=9, .reach=55, .y=88, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=76, .kb=17, .reach=65, .y=84, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=48, .y=18, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=52, .kb=11, .reach=70, .y=10, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=84, .kb=19, .reach=85, .y=24, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=42, .y=45, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=44, .kb=9, .reach=55, .y=44, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=76, .kb=17, .reach=65, .y=42, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=48, .y=9, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=52, .kb=11, .reach=70, .y=5, .h=40 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=84, .kb=19, .reach=85, .y=12, .h=54 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=32, .kb=7, .reach=46, .y=20, .h=49 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=42, .kb=9, .reach=46, .y=20, .h=49 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=56, .kb=11, .reach=50, .y=20, .h=49 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=40, .kb=9, .reach=54, .y=-44, .h=74 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=54, .kb=11, .reach=54, .y=-44, .h=74 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=72, .kb=15, .reach=58, .y=-44, .h=74 },
+        { .name="manifesto", .input=IN_P, .cmd=CMD_QCF, .startup=9, .active=1, .recover=20, .dmg=44, .kb=8, .y=88, .h=22, .proj_speed=12, .proj_life=70, .anim=A_CAST },
+        { .name="cackle", .input=IN_HP, .cmd=CMD_HCF, .startup=5, .active=4, .recover=20, .dmg=115, .kb=28, .reach=48, .y=36, .h=110, .cost=35, .anim=A_SPECIAL },
+        { .name="mega cackle", .input=IN_HK, .cmd=CMD_HCF, .startup=14, .active=1, .recover=36, .dmg=78, .kb=48, .y=60, .h=80, .boom=1, .cost=60, .anim=A_SUPER },
+    }},
+    { .name = "Megadami", .hp = 1000, .lives = 3, .speed = 5, .jump = 24, .w = 66, .h = 162, .moves = {
+        { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=26, .kb=5, .reach=44, .y=92, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=50, .kb=10, .reach=58, .y=90, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=84, .kb=18, .reach=68, .y=86, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=30, .kb=6, .reach=50, .y=16, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=56, .kb=12, .reach=72, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=90, .kb=20, .reach=88, .y=22, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=26, .kb=5, .reach=44, .y=46, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=50, .kb=10, .reach=58, .y=45, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=84, .kb=18, .reach=68, .y=42, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=30, .kb=6, .reach=50, .y=8, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=56, .kb=12, .reach=72, .y=4, .h=40 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=90, .kb=20, .reach=88, .y=10, .h=54 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=36, .kb=7, .reach=48, .y=20, .h=49 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=48, .kb=9, .reach=48, .y=20, .h=49 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=62, .kb=12, .reach=52, .y=20, .h=49 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=46, .kb=10, .reach=56, .y=-44, .h=74 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=60, .kb=12, .reach=56, .y=-44, .h=74 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=80, .kb=16, .reach=60, .y=-44, .h=74 },
+        { .name="ar15", .input=IN_P, .cmd=CMD_QCF, .startup=4, .active=1, .recover=10, .dmg=26, .kb=5, .y=82, .h=20, .proj_speed=34, .proj_life=45, .anim=A_CAST },
+        { .name="dynamite vest", .input=IN_HP, .cmd=CMD_HCF, .startup=8, .active=1, .recover=28, .dmg=95, .kb=50, .y=50, .h=90, .boom=1, .cost=45, .anim=A_SPECIAL },
+        { .name="old plane", .input=IN_HK, .cmd=CMD_HCF, .startup=18, .active=1, .recover=40, .dmg=72, .kb=58, .ship=6, .cost=50, .anim=A_SUPER },
+    }},
+    { .name = "Flusk", .hp = 880, .lives = 3, .speed = 7, .jump = 30, .w = 58, .h = 152, .moves = {
+        { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=2, .active=2, .recover=5, .dmg=20, .kb=4, .reach=45, .y=78, .h=22 },
+        { .name="strong", .input=IN_MP, .startup=4, .active=3, .recover=8, .dmg=38, .kb=8, .reach=56, .y=76, .h=28 },
+        { .name="fierce", .input=IN_HP, .startup=6, .active=3, .recover=12, .dmg=64, .kb=14, .reach=66, .y=72, .h=36 },
+        { .name="short", .input=IN_LK, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=48, .y=12, .h=26 },
+        { .name="forward", .input=IN_MK, .startup=6, .active=3, .recover=10, .dmg=46, .kb=10, .reach=70, .y=6, .h=38 },
+        { .name="roundhouse", .input=IN_HK, .startup=8, .active=4, .recover=14, .dmg=68, .kb=16, .reach=82, .y=20, .h=52 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=2, .active=2, .recover=5, .dmg=20, .kb=4, .reach=45, .y=38, .h=22 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=4, .active=3, .recover=8, .dmg=38, .kb=8, .reach=56, .y=37, .h=28 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=6, .active=3, .recover=14, .dmg=64, .kb=14, .reach=66, .y=34, .h=36 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=48, .y=6, .h=26 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=6, .active=3, .recover=10, .dmg=46, .kb=10, .reach=70, .y=2, .h=38 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=8, .active=4, .recover=16, .dmg=68, .kb=16, .reach=82, .y=8, .h=52 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=2, .active=14, .recover=5, .dmg=26, .kb=6, .reach=50, .y=16, .h=45 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=2, .active=14, .recover=5, .dmg=34, .kb=7, .reach=50, .y=16, .h=45 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=3, .active=14, .recover=6, .dmg=46, .kb=9, .reach=54, .y=16, .h=45 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=3, .active=14, .recover=5, .dmg=34, .kb=8, .reach=58, .y=-40, .h=70 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=3, .active=14, .recover=5, .dmg=44, .kb=10, .reach=58, .y=-40, .h=70 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=4, .active=14, .recover=6, .dmg=58, .kb=13, .reach=62, .y=-40, .h=70 },
+        { .name="laser gun", .input=IN_P, .cmd=CMD_QCF, .startup=5, .active=1, .recover=9, .dmg=28, .kb=5, .y=76, .h=16, .proj_speed=30, .proj_life=52, .anim=A_CAST },
+        { .name="awkward shrug", .input=IN_HP, .cmd=CMD_HCF, .startup=7, .active=5, .recover=22, .dmg=125, .kb=30, .reach=46, .y=42, .h=105, .cost=40, .anim=A_SPECIAL },
+        { .name="flying car", .input=IN_HK, .cmd=CMD_HCF, .startup=16, .active=1, .recover=38, .dmg=70, .kb=52, .ship=5, .cost=55, .anim=A_SUPER },
+    }},
+    { .name = "Spitsger", .hp = 920, .lives = 3, .speed = 6, .jump = 27, .w = 62, .h = 158, .moves = {
+        { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=23, .kb=5, .reach=44, .y=88, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=45, .kb=10, .reach=57, .y=86, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=80, .kb=18, .reach=67, .y=82, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=27, .kb=6, .reach=49, .y=16, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=53, .kb=12, .reach=71, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=87, .kb=20, .reach=86, .y=22, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=23, .kb=5, .reach=44, .y=44, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=45, .kb=10, .reach=57, .y=43, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=80, .kb=18, .reach=67, .y=40, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=27, .kb=6, .reach=49, .y=8, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=53, .kb=12, .reach=71, .y=4, .h=40 },
+        { .name="crouch roundhouse", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=87, .kb=20, .reach=86, .y=10, .h=54 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=33, .kb=7, .reach=47, .y=20, .h=49 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=44, .kb=9, .reach=47, .y=20, .h=49 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=58, .kb=12, .reach=51, .y=20, .h=49 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=42, .kb=10, .reach=55, .y=-44, .h=74 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=56, .kb=12, .reach=55, .y=-44, .h=74 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=74, .kb=16, .reach=59, .y=-44, .h=74 },
+        { .name="spit", .input=IN_P, .cmd=CMD_QCF, .startup=6, .active=1, .recover=12, .dmg=38, .kb=7, .y=94, .h=16, .proj_speed=16, .proj_life=55, .anim=A_CAST },
+        { .name="eat", .input=IN_HP, .cmd=CMD_HCF, .startup=7, .active=3, .recover=26, .dmg=150, .kb=70, .reach=THROW_RANGE, .y=10, .h=130, .throw=1, .cost=40, .anim=A_SPECIAL },
+        { .name="driveby van", .input=IN_HK, .cmd=CMD_HCF, .startup=15, .active=1, .recover=36, .dmg=68, .kb=50, .ship=6, .cost=55, .anim=A_SUPER },
     }},
 };
 

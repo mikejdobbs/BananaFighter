@@ -66,6 +66,7 @@ static Fig eff(int i)
     if (predicting && f.slot == me) {
         f.x = pb.x; f.y = pb.y; f.face = pb.face; f.invis = pb.invis > 0;
         f.st = (pb.stun && pb.crouch) ? -7
+             : (pb.stun && pb.down) ? -8
              : pb.stun ? -2
              : pb.block ? -3
              : pb.move >= 0 ? pb.move
@@ -84,6 +85,23 @@ void anim_tick(void)
         Fig f = eff(i);
         Anim *a = &an[f.slot];
         if (f.x < 0) continue;                      /* hidden */
+        /* One clock for the whole sweep: fall, then knees, then feet.
+           Leaving the fall (server hitstun or idle) jumps straight to the kneel. */
+        if (f.st >= 0) {
+            a->kd = -1;
+        } else if (f.st == -7) {
+            if (a->st != -7) a->kd = 0;
+            else if (a->kd < 10000) a->kd++;
+        } else if (f.st == -8 && a->kd <= 0) {
+            a->kd = KNOCKDOWN_STUN - GETUP_TICKS; /* joined during the get-up */
+        } else if (a->kd > 0 && (f.st == -8 || f.st == -2 || f.st == -1)) {
+            int lie = KNOCKDOWN_STUN - GETUP_TICKS;
+            if (a->st == -7 && a->kd < lie) a->kd = lie;
+            else a->kd++;
+            if (a->kd > KNOCKDOWN_STUN) a->kd = -1;
+        } else {
+            a->kd = -1;
+        }
         if (f.st != a->st) {
             if (f.st >= 0 && f.st < MAXMOVES && chars[f.ch].moves[f.st].name)
                 swing_sound(&chars[f.ch].moves[f.st]);
@@ -121,17 +139,29 @@ static void pick(const Fig *f, int *row, int *col)
     const Character *c = &chars[f->ch];
     const Anim *a = &an[f->slot];
 
-    if (f->st == -2) { *row = ROW_HURT; *col = a->t < 3 ? 0 : a->t < 8 ? 1 : 2; }
+    if (a->kd >= 0 && (f->st == -7 || f->st == -8 || f->st == -2 || f->st == -1)) {
+        int lie = KNOCKDOWN_STUN - GETUP_TICKS;
+        int knees = lie + GETUP_TICKS * 3 / 5;
+        *row = ROW_HURT;
+        if (a->kd < 7) *col = 3;             /* foot swept out */
+        else if (a->kd < 16) *col = 4;       /* tipping onto the back */
+        else if (a->kd < lie) *col = 5;      /* flat on the back */
+        else if (a->kd < knees) *col = 6;    /* up on the knees */
+        else *col = 7;                       /* up on the feet */
+    }
+    else if (f->st == -2) { *row = ROW_HURT; *col = a->t < 3 ? 0 : a->t < 8 ? 1 : 2; }
     else if (f->st == -3) { *row = ROW_BLOCK; *col = a->t < 4 ? 0 : 1; }
     else if (f->st == -4) { *row = ROW_FLY; *col = (aclk / 2) % FLY_FR; }
     else if (f->st == -5) { *row = ROW_CROUCH; *col = a->t < 4 ? 0 : 1; }
-    else if (f->st == -7) { *row = ROW_HURT; *col = a->t < 4 ? 0 : 1; } /* trip: tip over */
     else if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
         *row = ROW_MOVE + move_row(&c->moves[f->st]);
         *col = move_frame(&c->moves[f->st], a->t);
     }
-    else if (f->y > 0) { *row = ROW_JUMP; *col = a->dy > 2 ? 0 : a->dy < -2 ? 2 : 1; }
-    else if (a->land > 0) { *row = ROW_JUMP; *col = 3; }
+    else if (f->y > 0) {
+        *row = ROW_JUMP;
+        *col = a->dy > 2 ? 0 : a->dy < -5 ? 3 : a->dy < -1 ? 2 : 1;
+    }
+    else if (a->land > 0) { *row = ROW_JUMP; *col = a->land > LAND_TICKS / 2 ? 4 : 5; }
     else if (a->still < WALK_HOLD) { *row = ROW_WALK; *col = (a->walk / WALK_TICKS) % WALK_FR; }
     else { *row = ROW_IDLE; *col = (aclk / IDLE_TICKS) % IDLE_FR; }
 }
@@ -160,7 +190,6 @@ static void text(float x, float y, const char *fmt, ...)
 static void draw_sprite(const Fig *f, SDL_Texture *t)
 {
     const Character *c = &chars[f->ch];
-    const Anim *a = &an[f->slot];
     int row, col;
     pick(f, &row, &col);
 
@@ -170,22 +199,15 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
     SDL_FRect dst = { xc - cs * (f->face > 0 ? SPR_CX : SPR_CELL - SPR_CX) / SPR_CELL,
                       GROUND - f->y * SCALE - cs, cs, cs };
 
-    double ang = 0;
     SDL_FlipMode flip = f->face < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-    if (f->st == -7) {                                  /* sweep: tip over onto the ground */
-        float fall = a->t < 8 ? a->t / 8.0f : 1.0f;
-        ang = (f->face > 0 ? -90.0 : 90.0) * fall;
-        dst.y += cs * 0.42f * fall;                     /* settle onto the floor */
-        flip = SDL_FLIP_NONE;
-    }
 
     SDL_SetTextureAlphaMod(t, f->invis ? 90 : 255);
-    if (f->st == -2 || f->st == -7) SDL_SetTextureColorMod(t, 255, 140, 140);
+    if (f->st == -2 || f->st == -7 || f->st == -8) SDL_SetTextureColorMod(t, 255, 140, 140);
     else SDL_SetTextureColorMod(t, 255, 255, 255);
-    SDL_RenderTextureRotated(renderer, t, &src, &dst, ang, NULL, flip);
+    SDL_RenderTextureRotated(renderer, t, &src, &dst, 0, NULL, flip);
 
     const Uint8 *pc = pal[f->slot % MAX_PLAYERS];                   /* slot marker above the head */
-    float mark_y = f->st == -7 ? GROUND - f->y * SCALE - 10 : dst.y + cs * 0.02f;
+    float mark_y = (f->st == -7 || f->st == -8) ? GROUND - f->y * SCALE - 10 : dst.y + cs * 0.02f;
     box(xc - 7, mark_y, 14, 6, pc[0], pc[1], pc[2], f->invis ? 90 : 255);
 }
 
@@ -194,8 +216,8 @@ static void draw_box(const Fig *f)                  /* fallback when a sheet is 
 {
     const Character *c = &chars[f->ch];
     float w, h, x, y;
-    if (f->st == -7) {                              /* lying down */
-        w = c->h * SCALE * 0.65f;
+    if (f->st == -7 || f->st == -8) {                /* lying down / getting up */
+        w = c->h * SCALE * (f->st == -8 ? 0.55f : 0.65f);
         h = c->w * SCALE;
         x = f->x * SCALE - w / 2;
         y = GROUND - f->y * SCALE - h;
@@ -209,9 +231,9 @@ static void draw_box(const Fig *f)                  /* fallback when a sheet is 
     const Uint8 *col = pal[f->slot % MAX_PLAYERS];
 
     box(x, y, w, h, col[0], col[1], col[2], a);
-    if (f->st != -7)
+    if (f->st != -7 && f->st != -8)
         box(f->face > 0 ? x + w * 0.65f : x + w * 0.15f, y + h * 0.12f, w * 0.2f, h * 0.08f, 255, 255, 255, a);
-    if (f->st == -2 || f->st == -7) box(x, y, w, h, 255, 255, 255, 140);
+    if (f->st == -2 || f->st == -7 || f->st == -8) box(x, y, w, h, 255, 255, 255, 140);
     if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
         const Move *m = &c->moves[f->st];
         if (!m->proj_speed && m->reach)

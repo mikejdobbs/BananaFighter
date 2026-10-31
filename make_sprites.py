@@ -3,13 +3,14 @@
 
     python3 make_sprites.py            # everything
     python3 make_sprites.py ken alien  # just those characters
-    python3 make_sprites.py misc bg    # shots/ship/fx, and the stage background
+    python3 make_sprites.py misc bg    # shots/fx, and the stage background
 
 Everything is drawn at 3x size, given soft shading and a dark outline, then scaled down with a
 high-quality filter. Sheets are 32-bit BMPs with a real alpha channel (smooth edges).
 
-Fighter sheet: 8 columns of 192x192 cells, 29 rows
-  0 idle (6)  1 walk (8)  2 jump: rise, apex, fall, land (4)  3 block (2)  4 hurt (3)
+Fighter sheet: 8 columns of 192x192 cells, 30 rows
+  0 idle (6)  1 walk (8)  2 jump: rise, apex, fall, dive, land, recover (6)  3 block (2)
+  4 hurt (8): hit(3), sweep fall(3), knees then feet(2)
   5 fly (4, only characters with 'fly')  6 crouch (2)
   7..17 attacks, 6 frames each (windup 2, impact 2, follow-through 2), in this order:
         light punch, medium punch, heavy punch, light kick, medium kick, heavy kick,
@@ -19,16 +20,17 @@ Fighter sheet: 8 columns of 192x192 cells, 29 rows
 19..24 crouching attacks, 6 frames each: light/medium/heavy punch, light/medium/heavy kick
 25..28 extra jump attacks, 6 frames each: light punch, heavy punch, light kick, heavy kick
        (jump punch / jump kick above are the medium ones)
+29 ship (2): called-ship frames; Rump gets an airforce plane, others a mothership UFO
 'anims' below names the pose kind drawn for rows 7..17. 'canims' (rows 19..24) and 'xanims'
 (rows 25..28) are optional per-character lists; CANIMS / XANIMS are the defaults.
-shots.bmp: one 48x48 cell per character (config.h order).  ship.bmp: two 192x96 frames.
+shots.bmp: one 48x48 cell per character (config.h order).
 fx.bmp: four 96x96 cells (bomb, three explosion frames).  background.bmp: the 1280x580 stage.
 """
 
 import math, os, random, struct, sys
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps
 
-CELL, COLS, ROWS = 192, 8, 29
+CELL, COLS, ROWS = 192, 8, 30
 SS = 3  # supersampling factor
 K = CELL * SS / 64.0  # figures are designed in a 64-unit space
 CX = 26  # figure centre inside a cell: leaves room for reach on the facing side
@@ -230,6 +232,141 @@ CHARS = {
             "air_kick",
         ],
     ),
+    "jv": dict(
+        skin=(220, 175, 130),
+        top=(180, 145, 70),
+        arm_col=(180, 145, 70),
+        pants=(70, 90, 55),
+        shoe=(50, 35, 25),
+        torso_w=11,
+        arm_w=5,
+        leg_w=6,
+        head_r=7,
+        torso=17,
+        arm=17,
+        leg=22,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "bone",
+            "uppercut",
+            "summon",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
+    "kammy": dict(
+        skin=(235, 190, 150),
+        top=(180, 30, 35),
+        arm_col=(180, 30, 35),
+        pants=(40, 40, 50),
+        shoe=(30, 30, 35),
+        torso_w=9,
+        arm_w=5,
+        leg_w=6,
+        head_r=7,
+        torso=17,
+        arm=17,
+        leg=22,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "book",
+            "cackle",
+            "cackle_mega",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
+    "megadami": dict(
+        skin=(230, 185, 145),
+        top=(220, 120, 40),
+        arm_col=(220, 120, 40),
+        pants=(60, 65, 75),
+        shoe=(45, 45, 55),
+        torso_w=12,
+        arm_w=6,
+        leg_w=7,
+        head_r=8,
+        torso=18,
+        arm=17,
+        leg=21,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "rifle",
+            "vest",
+            "summon",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
+    "flusk": dict(
+        skin=(225, 180, 140),
+        top=(70, 75, 85),
+        arm_col=(70, 75, 85),
+        pants=(55, 58, 68),
+        shoe=(40, 42, 50),
+        torso_w=8,
+        arm_w=5,
+        leg_w=6,
+        head_r=7,
+        torso=16,
+        arm=16,
+        leg=22,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "laser",
+            "shrug",
+            "summon",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
+    "spitsger": dict(
+        skin=(210, 165, 125),
+        top=(25, 25, 30),
+        arm_col=(25, 25, 30),
+        pants=(35, 35, 45),
+        shoe=(20, 20, 25),
+        torso_w=10,
+        arm_w=5,
+        leg_w=6,
+        head_r=7,
+        torso=17,
+        arm=17,
+        leg=22,
+        anims=[
+            "jab",
+            "strike",
+            "hook",
+            "low_kick",
+            "kick",
+            "high_kick",
+            "spit",
+            "bite",
+            "summon",
+            "air_punch",
+            "air_kick",
+        ],
+    ),
 }
 FUR, FUR_D, FUR_L = (222, 140, 70), (178, 98, 44), (246, 214, 168)
 
@@ -411,17 +548,33 @@ JUMP = [
         lf=(30, -30), lb=(-25, -45), af=(110, 130), ab=(100, 120), lean=4, tail=0
     ),  # apex
     P(
-        dx=5, lf=(20, 20), lb=(-20, -20), af=(120, 110), ab=(-120, -110), tail=10
+        dx=4, lf=(25, 10), lb=(-20, -25), af=(115, 100), ab=(-100, -90), tail=8
     ),  # fall
-    P(crouch=5, lf=(45, -20), lb=(-45, 20), af=(70, 40), ab=(60, 30), lean=8),
-]  # land
+    P(
+        dx=6, lf=(15, 25), lb=(-25, -15), af=(130, 120), ab=(-130, -120), lean=-6, tail=12
+    ),  # dive
+    P(crouch=7, lf=(50, -15), lb=(-50, 15), af=(80, 45), ab=(70, 35), lean=10),  # land
+    P(crouch=3, lf=(30, -10), lb=(-30, 10), af=(40, 30), ab=(30, 20), lean=4),  # recover
+]
 BLK = P(crouch=3, lean=-4, af=(130, 80), ab=(120, 70), lf=(25, 10), lb=(-20, -10))
 BLOCK = [tween(P(), BLK, 0.6), BLK]
 HRT = P(lean=-18, dx=6, af=(-70, -100), ab=(-50, -80), lf=(15, 5), lb=(-20, -10))
+# cols 0-2 hitstun. 3-5 a sweep: foot flies out, body tips onto its back.
+# 6-7 get-up: onto the knees, then up onto the feet. Drawn in place (no client spin).
 HURT = [
     HRT,
     P(lean=-12, dx=5, af=(-50, -80), ab=(-35, -65), lf=(12, 4), lb=(-16, -8)),
     tween(HRT, P(), 0.6),
+    # front foot kicked out, arms up, starting to fall backward
+    P(lean=-26, dx=6, crouch=1, lf=(108, 48), lb=(-6, 0), af=(155, 165), ab=(-50, -85)),
+    # hips dropping, torso going over, both legs off the ground
+    P(lean=-52, dx=10, crouch=10, lf=(112, 62), lb=(48, 8), af=(162, 172), ab=(-70, -95)),
+    # flat on the back, knees up, head toward the rear of the cell
+    P(lean=-76, dx=16, crouch=18, lf=(118, 72), lb=(88, 42), af=(168, 175), ab=(-15, -48)),
+    # both knees on the floor, shins folded back, one hand pushing off
+    P(lean=4, dx=2, crouch=11, lf=(6, -92), lb=(-8, -98), af=(48, 78), ab=(145, 158)),
+    # up on the feet: stagger, knees straightening, arms coming in
+    P(lean=6, dx=3, crouch=2, lf=(28, 6), lb=(-18, -4), af=(32, 28), ab=(-12, -22)),
 ]
 CROUCH = dict(crouch=4, lf=(45, -20), lb=(-45, 20), af=(110, 50), ab=(100, 40))
 CRH = P(
@@ -575,6 +728,51 @@ MOVES = {
         P(lean=-8, af=(-120, -150), ab=(20, 30), fx="hairgrab"),
         P(lean=14, af=(85, 80), ab=(-25, -35), fx="hairtoss"),
         P(lean=4, af=(55, 65), ab=(-10, -20), fx="hairbald"),
+    ],
+    "bone": [
+        P(lean=-6, af=(-90, -110), ab=(15, 25), fx="bone"),
+        P(lean=10, af=(85, 82), ab=(-20, -30), fx="bone_fly"),
+        P(lean=2, af=(55, 65), ab=(-10, -20)),
+    ],
+    "book": [
+        P(lean=-4, af=(-70, -90), ab=(10, 20), fx="book"),
+        P(lean=8, af=(88, 85), ab=(-15, -25), fx="book_fly"),
+        P(lean=0, af=(60, 70), ab=(-10, -20)),
+    ],
+    "cackle": [
+        P(lean=4, af=(50, 70), ab=(-20, -30), fx="cackle"),
+        P(lean=-2, af=(165, 170), ab=(160, 168), fx="cackle+laugh"),
+        P(lean=2, af=(120, 130), ab=(-15, -25), fx="cackle"),
+    ],
+    "cackle_mega": [
+        P(lean=6, af=(40, 60), ab=(-25, -35), fx="cackle"),
+        P(lean=-4, af=(175, 178), ab=(170, 175), fx="cackle+laugh+wave"),
+        P(lean=4, af=(140, 150), ab=(-20, -30), fx="cackle+wave"),
+    ],
+    "rifle": [
+        P(lean=-2, af=(55, 65), ab=(-10, -20), fx="rifle"),
+        P(lean=4, af=(92, 92), ab=(-15, -25), fx="rifle+flash"),
+        P(lean=0, af=(72, 82), ab=(-10, -20), fx="rifle"),
+    ],
+    "vest": [
+        P(lean=2, af=(30, 50), ab=(-15, -25), fx="vest"),
+        P(lean=-6, af=(160, 165), ab=(155, 162), fx="vest+boom"),
+        P(lean=4, af=(80, 90), ab=(-10, -20), fx="smoke"),
+    ],
+    "shrug": [
+        P(lean=0, af=(45, 55), ab=(40, 50), fx="shrug"),
+        P(lean=-4, af=(130, 140), ab=(125, 135), fx="shrug+dance"),
+        P(lean=2, af=(70, 80), ab=(65, 75), fx="shrug"),
+    ],
+    "spit": [
+        P(lean=-4, af=(40, 60), ab=(-10, -20)),
+        P(lean=8, af=(95, 90), ab=(-20, -30), fx="spit"),
+        P(lean=2, af=(55, 65), ab=(-10, -20)),
+    ],
+    "bite": [
+        P(lean=6, af=(70, 85), ab=(60, 75)),
+        P(lean=16, af=(110, 100), ab=(100, 95), fx="bite"),
+        P(lean=8, af=(80, 70), ab=(70, 60)),
     ],
     "spray": [
         P(lean=-8, crouch=2, af=(-80, -110), ab=(-60, -100), fx="nut", tail=-16),
@@ -805,6 +1003,16 @@ def body_deco(cv, name, hip, sh, tw):
         cv.line([sh, (sh[0] + 3, sh[1] + 4)], fill=(245, 245, 245), width=3)
         cv.line([along(0.9, 2), along(0.1, 3)], fill=(200, 30, 40), width=3)
         cv.ellipse(ring(along(0.75, -3), 1), fill=(255, 215, 60))
+    elif name == "jv":
+        cv.pieslice(ring((sh[0], sh[1] - 10), 8), 180, 360, fill=(210, 175, 90))
+    elif name == "kammy":
+        cv.rectangle([mid[0] - tw / 2, mid[1] - 4, mid[0] + tw / 2, mid[1] + 4], fill=(200, 30, 35))
+    elif name == "megadami":
+        cv.rectangle([hip[0] - tw / 2, hip[1] - 6, hip[0] + tw / 2 + 2, hip[1] + 8], fill=(220, 120, 40))
+    elif name == "flusk":
+        cv.line([(sh[0] - 4, sh[1] + 2), (sh[0] + 6, sh[1] + 2)], fill=(120, 130, 150), width=2)
+    elif name == "spitsger":
+        cv.polygon([(sh[0] - 2, sh[1] - 6), (sh[0] + 8, sh[1] - 8), (sh[0] + 6, sh[1] - 2)], fill=(240, 240, 240))
 
 
 def head(cv, name, h, r, skin, bald=False):
@@ -898,7 +1106,23 @@ def head(cv, name, h, r, skin, bald=False):
             )
             cv.line([(hx + 1, hy - 1), (hx + 5, hy - 2)], fill=(200, 140, 60), width=1)
             cv.ellipse(ring((hx + r - 1, hy + 4), 1.3), fill=(150, 55, 50))
-        cv.rectangle([hx + 3, hy, hx + 4, hy + 1], fill=(20, 20, 30))
+    elif name == "jv":
+        cv.pieslice(ring(h, r + 1), 160, 380, fill=(210, 175, 90))
+        cv.line([(hx - r, hy - 2), (hx + r, hy - 2)], fill=(120, 80, 40), width=2)
+    elif name == "kammy":
+        cv.pieslice(ring(h, r), 180, 360, fill=(120, 25, 30))
+        cv.rectangle([hx + 1, hy - 1, hx + 3, hy], fill=(20, 20, 25))
+    elif name == "megadami":
+        cv.pieslice(ring(h, r), 180, 360, fill=(80, 70, 60))
+        cv.rectangle([hx + 2, hy, hx + 4, hy + 2], fill=(20, 20, 25))
+    elif name == "flusk":
+        cv.pieslice(ring(h, r), 180, 360, fill=(60, 65, 75))
+        cv.rectangle([hx + 2, hy - 1, hx + 4, hy], fill=(20, 20, 25))
+    elif name == "spitsger":
+        cv.pieslice(ring(h, r), 180, 360, fill=(25, 25, 30))
+        cv.rectangle([hx - 2, hy - 3, hx + 5, hy - 1], fill=(20, 20, 25))
+    if name in ("jv", "kammy", "megadami", "flusk", "spitsger"):
+        cv.rectangle([hx + 2, hy - 1, hx + 3, hy], fill=(20, 20, 25))
 
 
 def toupee(cv, c, s=1.0):
@@ -1007,6 +1231,53 @@ def fx(cv, kind, fh, af, hip, cx):
         elif k == "nuts":
             for dx_, dy_ in ((10, -8), (13, 0), (10, 8)):
                 acorn(cv, (fh[0] + dx_, fh[1] + dy_), 0.9)
+        elif k == "bone":
+            cv.line([(fh[0] - 2, fh[1] - 4), (fh[0] + 6, fh[1] + 2)], fill=(240, 230, 210), width=2)
+            cv.ellipse(ring((fh[0] - 2, fh[1] - 4), 1.2), fill=(240, 230, 210))
+            cv.ellipse(ring((fh[0] + 6, fh[1] + 2), 1.2), fill=(240, 230, 210))
+        elif k == "bone_fly":
+            cv.line([(fh[0] + 4, fh[1] - 2), (fh[0] + 14, fh[1] + 1)], fill=(240, 230, 210), width=2)
+        elif k == "book":
+            cv.rectangle([fh[0] - 2, fh[1] - 5, fh[0] + 5, fh[1] + 4], fill=(180, 30, 35))
+            cv.line([(fh[0], fh[1] - 5), (fh[0], fh[1] + 4)], fill=(240, 240, 240), width=1)
+        elif k == "book_fly":
+            cv.rectangle([fh[0] + 6, fh[1] - 4, fh[0] + 13, fh[1] + 3], fill=(180, 30, 35))
+        elif k == "cackle":
+            cv.arc([fh[0] - 8, fh[1] - 14, fh[0] + 2, fh[1] - 4], 200, 340, fill=(200, 40, 40), width=1.2)
+        elif k == "laugh":
+            for dy in (-8, -4, 0, 4, 8):
+                cv.line([(fh[0] + 8, fh[1] + dy), (fh[0] + 16, fh[1] + dy)], fill=(255, 255, 255), width=0.7)
+        elif k == "wave":
+            for r in (10, 16, 22):
+                cv.arc(
+                    [fh[0] - r, fh[1] - r, fh[0] + r, fh[1] + r],
+                    250,
+                    310,
+                    fill=(255, 220, 120),
+                    width=0.8,
+                )
+        elif k == "rifle":
+            gx, gy = fh
+            cv.rectangle([gx, gy - 2, gx + 14, gy + 2], fill=(55, 58, 65))
+            cv.rectangle([gx + 14, gy - 1, gx + 18, gy + 1], fill=(40, 42, 48))
+            cv.rectangle([gx + 2, gy + 2, gx + 5, gy + 6], fill=(35, 38, 45))
+        elif k == "vest":
+            cv.rectangle([hip[0] - 6, hip[1] - 8, hip[0] + 8, hip[1] + 6], fill=(220, 120, 40))
+            for i in range(3):
+                cv.rectangle([hip[0] - 4 + i * 4, hip[1] - 4, hip[0] - 2 + i * 4, hip[1] + 2], fill=(60, 60, 70))
+        elif k == "boom":
+            cv.ellipse(ring((hip[0], hip[1] + 4), 8), fill=(255, 140, 40))
+            cv.ellipse(ring((hip[0], hip[1] + 4), 4), fill=(255, 240, 120))
+        elif k == "shrug":
+            cv.line([(fh[0] - 10, fh[1] - 8), (fh[0] + 6, fh[1] - 8)], fill=(240, 240, 240), width=2)
+        elif k == "dance":
+            cv.line([(hip[0] - 6, hip[1] + 2), (hip[0] + 10, hip[1] - 4)], fill=(255, 255, 255), width=1)
+        elif k == "spit":
+            cv.ellipse([fh[0] + 4, fh[1] - 2, fh[0] + 12, fh[1] + 3], fill=(180, 220, 80))
+            for dx in (6, 9, 12):
+                cv.ellipse(ring((fh[0] + dx, fh[1]), 0.8), fill=(140, 190, 60))
+        elif k == "bite":
+            cv.polygon([(fh[0] + 2, fh[1] - 2), (fh[0] + 10, fh[1]), (fh[0] + 2, fh[1] + 4)], fill=(240, 240, 240))
 
 
 def draw_fig(cv, name, p):
@@ -1080,6 +1351,8 @@ def sheet(name):
     for r, frames in enumerate(rows):
         for col, pose in enumerate(frames):
             img.paste(render(name, pose), (col * CELL, r * CELL))
+    for f in range(2):  # row 29: called-ship frames
+        img.paste(ship_cell(name, f), (f * CELL, (ROWS - 1) * CELL))
     return img
 
 
@@ -1115,6 +1388,23 @@ def shots():
             acorn(cv, (8, 8), 1.6)
         elif name == "rump":  # flying toupee
             toupee(cv, (8, 8), 1.1)
+        elif name == "jv":
+            cv.line([(2, 8), (14, 8)], fill=(240, 230, 210), width=2)
+            cv.ellipse(ring((3, 8), 1.2), fill=(240, 230, 210))
+            cv.ellipse(ring((13, 8), 1.2), fill=(240, 230, 210))
+        elif name == "kammy":
+            cv.rectangle([4, 4, 12, 12], fill=(180, 30, 35))
+            cv.line([(5, 6), (11, 10)], fill=(240, 240, 240), width=1)
+        elif name == "megadami":
+            cv.rectangle([3, 5, 13, 11], fill=(55, 58, 65))
+            cv.line([(14, 7), (15, 9)], fill=(255, 230, 100), width=1)
+        elif name == "flusk":
+            cv.line([(1, 8), (15, 8)], fill=(255, 60, 60), width=3)
+            cv.line([(2, 8), (14, 8)], fill=(255, 200, 200), width=1)
+        elif name == "spitsger":
+            cv.ellipse([5, 5, 11, 11], fill=(180, 220, 80))
+            for dx in (6, 8, 10):
+                cv.ellipse(ring((dx, 8), 0.7), fill=(140, 190, 60))
         else:
             cv.ellipse(ring(c, 6), fill=(70, 30, 110))
             cv.ellipse(ring(c, 3), fill=(60, 255, 100))
@@ -1124,29 +1414,138 @@ def shots():
     return img
 
 
-def ship_sheet():  # two frames, lights alternate
-    img = Image.new("RGBA", (384, 96), (0, 0, 0, 0))
-    for f in range(2):
-        cv = Cv(64, 32, K)
-        cv.pieslice([20, 2, 44, 26], 180, 360, fill=(140, 230, 255))
-        cv.arc([22, 4, 42, 24], 200, 250, fill=(235, 252, 255), width=1.2)
-        cv.ellipse(ring((32, 9), 4), fill=(120, 210, 120))
-        cv.polygon([(33, 7), (37, 8), (37, 10), (33, 10)], fill=(15, 15, 25))
-        cv.ellipse([3, 12, 61, 28], fill=(150, 155, 172))
-        cv.ellipse([10, 21, 54, 31], fill=(95, 100, 118))
-        for i in range(6):
-            x = 10 + i * 9
-            cv.rectangle(
-                [x, 18, x + 3, 20],
-                fill=(255, 230, 60) if (i + f) % 2 else (255, 80, 60),
-            )
-        for x in (14, 24, 40, 50):
-            cv.ellipse(ring((x, 15), 0.8), fill=(210, 214, 226))
-        cv.rectangle([28, 28, 36, 31], fill=(60, 65, 80))
-        img.paste(
-            finish(cv.img, outline=1.4).resize((192, 96), Image.LANCZOS), (f * 192, 0)
+def draw_ufo(cv, f):
+    """Classic mothership: dome + saucer, lights blink between frames."""
+    cv.pieslice([20, 18, 44, 42], 180, 360, fill=(140, 230, 255))
+    cv.arc([22, 20, 42, 40], 200, 250, fill=(235, 252, 255), width=1.2)
+    cv.ellipse(ring((32, 25), 4), fill=(120, 210, 120))
+    cv.polygon([(33, 23), (37, 24), (37, 26), (33, 26)], fill=(15, 15, 25))
+    cv.ellipse([3, 28, 61, 44], fill=(150, 155, 172))
+    cv.ellipse([10, 37, 54, 47], fill=(95, 100, 118))
+    for i in range(6):
+        x = 10 + i * 9
+        cv.rectangle(
+            [x, 34, x + 3, 36],
+            fill=(255, 230, 60) if (i + f) % 2 else (255, 80, 60),
         )
-    return img
+    for x in (14, 24, 40, 50):
+        cv.ellipse(ring((x, 31), 0.8), fill=(210, 214, 226))
+    cv.rectangle([28, 44, 36, 47], fill=(60, 65, 80))
+
+
+def draw_plane(cv, f):
+    """Airforce jet for Rump: grey fighter facing right, afterburner blinks."""
+    grey, grey_d = (150, 158, 170), (95, 102, 114)
+    blue, white = (35, 70, 140), (240, 242, 248)
+    # fuselage
+    cv.polygon(
+        [(6, 30), (46, 27), (58, 31), (46, 35), (6, 34)],
+        fill=grey,
+    )
+    # nose cone
+    cv.polygon([(58, 31), (63, 31), (58, 29), (58, 33)], fill=grey_d)
+    # cockpit canopy
+    cv.ellipse([42, 25, 54, 32], fill=(90, 175, 220))
+    cv.arc([42, 25, 54, 32], 200, 340, fill=(220, 240, 255), width=0.8)
+    # main wing
+    cv.polygon([(18, 32), (40, 32), (28, 46), (14, 44)], fill=grey_d)
+    # wing stripe
+    cv.line([(20, 36), (34, 36)], fill=blue, width=1.2)
+    # vertical stabilizer
+    cv.polygon([(8, 30), (18, 29), (12, 16), (7, 18)], fill=grey)
+    cv.rectangle([9, 20, 14, 24], fill=blue)
+    # horizontal stabilizer
+    cv.polygon([(8, 34), (18, 34), (14, 40), (8, 38)], fill=grey_d)
+    # intake / engine nacelle
+    cv.ellipse([14, 33, 24, 39], fill=grey_d)
+    # USAF-style roundel
+    cv.ellipse(ring((30, 31), 2.8), fill=white)
+    cv.ellipse(ring((30, 31), 1.8), fill=blue)
+    cv.ellipse(ring((30, 31), 0.8), fill=(200, 40, 45))
+    # under-wing stores
+    cv.rectangle([22, 42, 34, 44], fill=(55, 58, 68))
+    cv.ellipse([33, 41.5, 36, 44.5], fill=(70, 72, 80))
+    # afterburner: alternates warm / hot
+    glow = (255, 200, 80) if f % 2 == 0 else (255, 90, 40)
+    cv.ellipse([1, 30, 8, 35], fill=glow)
+    cv.ellipse([2, 31, 6, 34], fill=(255, 250, 200) if f % 2 == 0 else (255, 180, 100))
+
+
+def draw_truck(cv, f):
+    """Hillbilly pickup tossing bombs from the bed."""
+    rust, dark = (160, 85, 45), (90, 50, 30)
+    cv.rectangle([8, 32, 52, 44], fill=rust)
+    cv.rectangle([8, 28, 22, 36], fill=(120, 170, 210))
+    cv.rectangle([22, 30, 52, 44], fill=(130, 70, 38))
+    cv.ellipse([10, 40, 18, 48], fill=(30, 30, 35))
+    cv.ellipse([42, 40, 50, 48], fill=(30, 30, 35))
+    cv.rectangle([52, 33, 58, 40], fill=dark)
+    for i, x in enumerate((28, 36, 44)):
+        cv.ellipse(ring((x, 30), 2.5), fill=(45, 48, 55))
+        if (i + f) % 2:
+            cv.line([(x, 28), (x, 22)], fill=(255, 200, 80), width=1)
+
+
+def draw_old_plane(cv, f):
+    """Vintage bomber with twin wings."""
+    cv.ellipse([18, 28, 46, 38], fill=(140, 120, 90))
+    cv.polygon([(46, 33), (58, 31), (46, 36)], fill=(110, 95, 70))
+    cv.polygon([(12, 32), (28, 32), (20, 46), (8, 44)], fill=(100, 85, 65))
+    cv.polygon([(30, 32), (46, 32), (38, 46), (26, 44)], fill=(100, 85, 65))
+    cv.polygon([(8, 30), (16, 29), (12, 18), (7, 20)], fill=(140, 120, 90))
+    cv.ellipse(ring((32, 31), 2), fill=(255, 230, 120) if f % 2 else (255, 140, 60))
+
+
+def draw_flying_car(cv, f):
+    """Retro flying car with fins."""
+    cv.ellipse([10, 32, 50, 42], fill=(180, 50, 55))
+    cv.ellipse([18, 28, 38, 36], fill=(90, 175, 220))
+    cv.polygon([(8, 34), (14, 28), (16, 34)], fill=(180, 50, 55))
+    cv.polygon([(44, 34), (50, 28), (52, 34)], fill=(180, 50, 55))
+    glow = (200, 240, 255) if f % 2 else (120, 200, 255)
+    cv.ellipse([4, 36, 10, 40], fill=glow)
+    cv.ellipse([50, 36, 56, 40], fill=glow)
+
+
+def draw_van(cv, f):
+    """Gang van for a drive-by."""
+    cv.rectangle([6, 30, 54, 44], fill=(35, 35, 45))
+    cv.rectangle([8, 32, 20, 40], fill=(80, 90, 110))
+    cv.rectangle([22, 32, 34, 40], fill=(80, 90, 110))
+    cv.ellipse([12, 40, 20, 48], fill=(25, 25, 30))
+    cv.ellipse([40, 40, 48, 48], fill=(25, 25, 30))
+    for i, x in enumerate((26, 34, 42)):
+        if (i + f) % 2 == 0:
+            cv.line([(x, 32), (x + 4, 30)], fill=(255, 230, 80), width=1.2)
+
+
+def draw_cackle_wave(cv, f):
+    """Kammy's super: sound waves instead of a ship."""
+    cx, cy = 32, 32
+    for i, r in enumerate((8, 14, 20, 26)):
+        cv.arc(
+            [cx - r, cy - r, cx + r, cy + r],
+            240 + f * 8,
+            300 + f * 8,
+            fill=(255, 220, 100) if (i + f) % 2 else (255, 160, 60),
+            width=1.5,
+        )
+    cv.ellipse(ring((cx, cy), 5), fill=(200, 40, 40))
+
+
+def ship_cell(name, f):
+    """One called-ship frame as a full fighter-sheet cell (centered in 64-unit space)."""
+    cv = Cv(64, 64, K)
+    ship_draw = {
+        "rump": draw_plane,
+        "jv": draw_truck,
+        "megadami": draw_old_plane,
+        "flusk": draw_flying_car,
+        "spitsger": draw_van,
+        "kammy": draw_cackle_wave,
+    }
+    (ship_draw.get(name) or draw_ufo)(cv, f)
+    return finish(cv.img, outline=1.4).resize((CELL, CELL), Image.LANCZOS)
 
 
 def fx_sheet():  # bomb + 3 explosion frames
@@ -1345,7 +1744,6 @@ def main(args):
             save_argb(sheet(t), os.path.join(OUT, t + ".bmp"))
         elif t == "misc":
             save_argb(shots(), os.path.join(OUT, "shots.bmp"))
-            save_argb(ship_sheet(), os.path.join(OUT, "ship.bmp"))
             save_argb(fx_sheet(), os.path.join(OUT, "fx.bmp"))
         elif t == "bg":
             background().save(os.path.join(OUT, "background.bmp"))
