@@ -24,7 +24,7 @@ unsigned aclk;                               /* Animation clock (ticks) */
 SDL_Renderer *renderer;                      /* Global renderer */
 static Anim an[MAX_PLAYERS];                 /* Per-slot animation state */
 static SDL_Texture *tex[NCHARS];             /* Fighter sheets (NULL => fallback boxes) */
-static SDL_Texture *shots, *shipt, *fxt, *bg;/* Other sprite sheets */
+static SDL_Texture *shots, *fxt, *bg;        /* Other sprite sheets */
 
 /* Load a BMP texture from sprites/ with alpha blending enabled; NULL on failure */
 static SDL_Texture *load_tex(const char *file)
@@ -55,7 +55,6 @@ void load_sprites(void)
             fprintf(stderr, "no sprites/%s: drawing %s as a box\n", fn, chars[i].name);
     }
     shots = load_tex("shots.bmp");
-    shipt = load_tex("ship.bmp");
     fxt   = load_tex("fx.bmp");
     bg    = load_tex("background.bmp");
 }
@@ -259,14 +258,19 @@ static void draw_boom(const Boom *b)
     }
 }
 
-/* Draw a ship (Z) */
+/* Draw a ship (Z): art comes from the caller's fighter sheet (ROW_SHIP) */
 static void draw_ship(const Ship *s)
 {
+    int ch = 0;
+    for (int i = 0; i < nf; i++)
+        if (F[i].slot == s->owner) { ch = F[i].ch; break; }
     float x = s->x * SCALE, y = GROUND - SHIP_Y * SCALE;
-    if (shipt) {
-        SDL_FRect src = { ((aclk / 8) % 2) * SHIP_FW, 0, SHIP_FW, SHIP_FH };
+    if (tex[ch]) {
+        int fr = (aclk / 8) % SHIP_FR;
+        SDL_FRect src = { fr * SPR_CELL, ROW_SHIP * SPR_CELL, SPR_CELL, SPR_CELL };
         SDL_FRect dst = { x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 2, SHIP_DRAW_W, SHIP_DRAW_H };
-        SDL_RenderTexture(renderer, shipt, &src, &dst);
+        SDL_RenderTextureRotated(renderer, tex[ch], &src, &dst, 0, NULL,
+                                 s->vx < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
     } else {
         box(x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 4, SHIP_DRAW_W, SHIP_DRAW_H / 2, 140, 145, 160, 255);
     }

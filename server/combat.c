@@ -1,3 +1,4 @@
+#include "config.h"
 #include "server.h"
 
 static void ko(Player *player) {
@@ -29,12 +30,19 @@ static void hurt(Player *a, Player *v, const Move *m, int dir) {
         vb->vx = dir * m->kb / 8;
     } else {
         v->hp -= m->dmg;
-        /* Apply standard hitstun and horizontal knockback */
-        vb->stun = HITSTUN;
-        vb->vx = dir * m->kb / 4;
-        /* Knockdown only on crouching strong kick (medium kick input while crouching move) */
-        if (!m->throw && m->input == IN_MK && m->crouch) {
-            vb->vy = THROW_LIFT / 2;
+        if (m->throw) {
+            /* Throws: no hitstun animation, apply strong vertical lift and some horizontal reposition */
+            vb->stun = THROW_STUN;
+            vb->vx = dir * (m->kb > 0 ? m->kb : THROW_KB);
+            vb->vy = THROW_LIFT;
+        } else {
+            /* Apply standard hitstun and horizontal knockback */
+            vb->stun = HITSTUN;
+            vb->vx = dir * m->kb / 4;
+            /* Crouching high kick performs a sweep that pops the opponent upward */
+            if (m->input == IN_HP && m->crouch) {
+                vb->vy = THROW_LIFT / 2;
+            }
         }
         vb->move = -1;
     }
@@ -120,13 +128,14 @@ static void explode(const Proj *j) {
     }
 }
 
-void melee(int player_index, const Move *move) {
-    Player *player = &players[player_index];
+void delee(int player_index, const Move *move) {
+    Pladsadyer *player = &players[player_index];
     const Character *character = &chars[player->s_character];
 
     int player_x0 = player->body.x + player->body.face * character->w / 2;
     int player_x1 = player_x0 + player->body.face * move->reach;
     int best = -1;
+    int want_throw = (move->input == IN_HP); /* high punch triggers throw when close */
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
         Player *nearby_player = &players[i];
@@ -144,19 +153,23 @@ void melee(int player_index, const Move *move) {
                      hurt_top(nearby_player, nearby_character)))
             continue;
         
-        if (move->throw) {
+        /* If this move is a designated throw OR we're pressing high punch near an opponent, pick closest and throw */
+        if (move->throw || want_throw) {
             if (best < 0 || abs(nearby_player->body.x - player->body.x) <
                                abs(players[best].body.x - player->body.x)) {
                 best = i;
             }
         } else {
-            // Non-throw melee should hurt all players in range
+            /* Non-throw melee should hurt all players in range */
             hurt(player, nearby_player, move, player->body.face);
             player->body.hit = 1;
         }
     }
     if (best >= 0) { /* a grab holds only the closest victim */
-        hurt(player, &players[best], move, player->body.face);
+        Move throwMove = *move;
+        throwMove.throw = 1; /* ensure unblockable */
+        /* Treat high punch close as a throw even if original move wasn't flagged */
+        hurt(player, &players[best], &throwMove, player->body.face);
         player->body.hit = 1;
     }
 }
