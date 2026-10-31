@@ -30,8 +30,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "crypto init failed\n");
         return 1;
     }
-    if (session_key && session_key[0])
+    if (session_key && session_key[0]) {
         network_set_session_password(session_key);
+        if (hosting)
+            server_embed_set_session_password(session_key);
+    }
 
     if (hosting) {
         if (server_embed_start() < 0) {

@@ -4,6 +4,11 @@
 #include <pthread.h>
 #include <stdatomic.h>
 
+void server_embed_set_session_password(const char *password)
+{
+    server_set_session_password(password);
+}
+
 static atomic_int running; /* 1 while the poll loop should keep going */
 static int lobby_fd = -1;
 static pthread_t thread;

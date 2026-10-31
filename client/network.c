@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include "crypto_session.h"
@@ -59,6 +60,8 @@ static int last_tick = -1;
 static int num(char **s) { return (int)strtol(*s, s, 10); }
 static void udp_open(void);
 static void udp_hello(void);
+static int pump_tcp(void);
+static long long now_ms(void);
 
 int network_init(void) { return crypto_session_init(); }
 
@@ -92,8 +95,11 @@ static int ensure_crypto_handshake(void)
         ssize_t n = recv(networkSocketFd, rb + rl, sizeof rb - (size_t)rl - 1, 0);
         if (n == 0)
             return 0;
-        if (n < 0)
-            return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                continue;
+            return 0;
+        }
         rl += (int)n;
     }
 
@@ -110,7 +116,22 @@ static int ensure_crypto_handshake(void)
 int network_handshake(void)
 {
     rl = 0;
-    return ensure_crypto_handshake();
+    if (!ensure_crypto_handshake())
+        return 0;
+
+    /* Server sends Y/A/U encrypted right after our K line; read them before SDL init. */
+    long long deadline = now_ms() + 5000;
+    while (me < 0 || !token) {
+        if (now_ms() >= deadline)
+            return 0;
+        if (!pump_tcp())
+            return 0;
+        if (me >= 0 && token)
+            return 1;
+        struct pollfd pfd = {networkSocketFd, POLLIN, 0};
+        poll(&pfd, 1, 50);
+    }
+    return 1;
 }
 
 /* Direction to the nearest visible non-self opponent at position x: -1 left, +1 right, 0 none */

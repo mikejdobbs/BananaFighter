@@ -4,6 +4,10 @@
 /* Public API for running the game server in-process (listen server) or
    from the dedicated server binary. Do not include server.h from the client. */
 
+/* Optional lobby password (NULL or "" clears). Must match the client when using
+   BANANAFIGHTER_KEY / -k. Call before server_embed_start(). */
+void server_embed_set_session_password(const char *password);
+
 /* Bind PORT and spawn the poll loop on a background thread. Returns 0 on
    success, -1 on failure (e.g. port already in use). Idempotent if already
    running: returns 0 without starting a second thread. */
