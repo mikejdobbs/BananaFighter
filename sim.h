@@ -77,6 +77,7 @@ static inline int body_step(Body *body, const Character *character,
 {
     int ev = 0;
 
+    int knocked = body->stun && body->crouch; /* sweep trip: stay down until get-up */
     body->block = body->flying = body->crouch = 0;
 
     /* Count down for invisibility */
@@ -87,8 +88,13 @@ static inline int body_step(Body *body, const Character *character,
 
     if (body->stun) { /* Stunned players are limited */
         body->stun--;
-        /* Slow player's walk if stunned */
-        if (body->y == 0) body->vx = body->vx * 3 / 4;
+        if (knocked && body->stun > GETUP_TICKS) {
+            body->crouch = 1; /* still on the ground */
+            body->vx = 0;
+        } else if (body->y == 0) {
+            /* Slow player's walk if stunned */
+            body->vx = body->vx * 3 / 4;
+        }
 
     } else if (body->move >= 0) { /* Continue moves already in progress */
         const Move *m = &character->moves[body->move];

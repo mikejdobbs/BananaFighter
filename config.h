@@ -13,6 +13,8 @@
 #define HITSTUN       12
 #define THROW_STUN    30        /* ticks a thrown victim is helpless */
 #define THROW_LIFT    50        /* upward launch speed of a throw */
+#define KNOCKDOWN_STUN 40       /* crouch HK sweep: time spent down before get-up */
+#define GETUP_TICKS   10        /* last ticks of knockdown: rising / get-up */
 #define THROW_RANGE   100        /* close enough to grab: heavy punch becomes a throw, beating block */
 #define BLOCK_PCT     10        /* % of damage taken while blocking */
 #define METER_MAX     100       /* super meter: +dmg/4 dealt, +dmg/8 taken */

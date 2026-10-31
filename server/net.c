@@ -5,8 +5,9 @@
    else AI index + 1) Match (UDP): "S tick winner ack {P slot ch x y hp lives
    meter face state invis}... Q vx vy frame stun grace invis_ticks hit fuel {J
    owner x y}... {B owner x y}... {Z owner x vx}... {X x y t}..." state: >= 0
-   attacking (move index), -1 idle, -2 stunned, -3 blocking, -4 flying, -5
-   crouching, -6 crouching and blocking. J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra
+   attacking (move index), -1 idle, -2 stunned / getting up, -3 blocking, -4 flying, -5
+   crouching, -6 crouching and blocking, -7 knocked down (sweep trip).
+   J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra
    state) lets the client resume simulation. Invisible opponents have x, y and
    state hidden. */
 
@@ -35,7 +36,9 @@ void send_state(int v) {
             // hide invisible players to everyone but themself
             int hide = p->body.invis && k != v;
 
-            int st = p->body.stun ? -2
+            /* Knockdown (-7) while tripped; hurt (-2) during get-up. */
+            int st = (p->body.stun && p->body.crouch) ? -7
+                   : p->body.stun ? -2
                    : (p->body.block && p->body.crouch) ? -6   /* crouching block */
                    : p->body.block ? -3
                    : p->body.move >= 0 ? p->body.move
