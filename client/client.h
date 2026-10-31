@@ -20,6 +20,8 @@
   171 /* figure height in the cell: scaled to the hitbox height */
 #define SHOT_CELL 48 /* shots.bmp: one cell per character */
 #define FX_CELL 96   /* fx.bmp: bomb, then three explosion frames */
+#define SHIP_FW 192  /* ship.bmp: two frames of SHIP_FW x SHIP_FH */
+#define SHIP_FH 96
 enum {
   ROW_IDLE,
   ROW_WALK,
@@ -29,12 +31,10 @@ enum {
   ROW_FLY,
   ROW_CROUCH,
   ROW_MOVE
-};                /* 11 move rows follow; then crouch block/attacks and jump extras */
-#define ROW_SHIP 29 /* called-ship frames (2) at the bottom of each fighter sheet */
+};                /* 11 move rows follow */
 #define IDLE_FR 6 /* frames in each looping row */
 #define WALK_FR 8
 #define FLY_FR 4
-#define SHIP_FR 2
 #define IDLE_TICKS 9    /* ticks per idle frame */
 #define WALK_TICKS 3    /* ticks per walk frame */
 #define WALK_HOLD 6     /* ticks without movement before the walk cycle stops */

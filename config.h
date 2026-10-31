@@ -13,8 +13,7 @@
 #define HITSTUN       12
 #define THROW_STUN    30        /* ticks a thrown victim is helpless */
 #define THROW_LIFT    50        /* upward launch speed of a throw */
-#define THROW_KB      12        /* default horizontal knockback for throws */
-#define THROW_RANGE   200        /* close enough to grab: heavy punch becomes a throw, beating block */
+#define THROW_RANGE   100        /* close enough to grab: heavy punch becomes a throw, beating block */
 #define BLOCK_PCT     10        /* % of damage taken while blocking */
 #define METER_MAX     100       /* super meter: +dmg/4 dealt, +dmg/8 taken */
 #define RESPAWN_GRACE 90        /* invulnerable ticks after losing a life */

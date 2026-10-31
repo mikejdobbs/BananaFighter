@@ -3,12 +3,12 @@
 
     python3 make_sprites.py            # everything
     python3 make_sprites.py ken alien  # just those characters
-    python3 make_sprites.py misc bg    # shots/fx, and the stage background
+    python3 make_sprites.py misc bg    # shots/ship/fx, and the stage background
 
 Everything is drawn at 3x size, given soft shading and a dark outline, then scaled down with a
 high-quality filter. Sheets are 32-bit BMPs with a real alpha channel (smooth edges).
 
-Fighter sheet: 8 columns of 192x192 cells, 30 rows
+Fighter sheet: 8 columns of 192x192 cells, 29 rows
   0 idle (6)  1 walk (8)  2 jump: rise, apex, fall, land (4)  3 block (2)  4 hurt (3)
   5 fly (4, only characters with 'fly')  6 crouch (2)
   7..17 attacks, 6 frames each (windup 2, impact 2, follow-through 2), in this order:
@@ -19,17 +19,16 @@ Fighter sheet: 8 columns of 192x192 cells, 30 rows
 19..24 crouching attacks, 6 frames each: light/medium/heavy punch, light/medium/heavy kick
 25..28 extra jump attacks, 6 frames each: light punch, heavy punch, light kick, heavy kick
        (jump punch / jump kick above are the medium ones)
-29 ship (2): called-ship frames; Rump gets an airforce plane, others a mothership UFO
 'anims' below names the pose kind drawn for rows 7..17. 'canims' (rows 19..24) and 'xanims'
 (rows 25..28) are optional per-character lists; CANIMS / XANIMS are the defaults.
-shots.bmp: one 48x48 cell per character (config.h order).
+shots.bmp: one 48x48 cell per character (config.h order).  ship.bmp: two 192x96 frames.
 fx.bmp: four 96x96 cells (bomb, three explosion frames).  background.bmp: the 1280x580 stage.
 """
 
 import math, os, random, struct, sys
 from PIL import Image, ImageDraw, ImageFilter, ImageChops, ImageOps
 
-CELL, COLS, ROWS = 192, 8, 30
+CELL, COLS, ROWS = 192, 8, 29
 SS = 3  # supersampling factor
 K = CELL * SS / 64.0  # figures are designed in a 64-unit space
 CX = 26  # figure centre inside a cell: leaves room for reach on the facing side
@@ -1081,8 +1080,6 @@ def sheet(name):
     for r, frames in enumerate(rows):
         for col, pose in enumerate(frames):
             img.paste(render(name, pose), (col * CELL, r * CELL))
-    for f in range(2):  # row 29: called-ship frames
-        img.paste(ship_cell(name, f), (f * CELL, (ROWS - 1) * CELL))
     return img
 
 
@@ -1127,71 +1124,29 @@ def shots():
     return img
 
 
-def draw_ufo(cv, f):
-    """Classic mothership: dome + saucer, lights blink between frames."""
-    cv.pieslice([20, 18, 44, 42], 180, 360, fill=(140, 230, 255))
-    cv.arc([22, 20, 42, 40], 200, 250, fill=(235, 252, 255), width=1.2)
-    cv.ellipse(ring((32, 25), 4), fill=(120, 210, 120))
-    cv.polygon([(33, 23), (37, 24), (37, 26), (33, 26)], fill=(15, 15, 25))
-    cv.ellipse([3, 28, 61, 44], fill=(150, 155, 172))
-    cv.ellipse([10, 37, 54, 47], fill=(95, 100, 118))
-    for i in range(6):
-        x = 10 + i * 9
-        cv.rectangle(
-            [x, 34, x + 3, 36],
-            fill=(255, 230, 60) if (i + f) % 2 else (255, 80, 60),
+def ship_sheet():  # two frames, lights alternate
+    img = Image.new("RGBA", (384, 96), (0, 0, 0, 0))
+    for f in range(2):
+        cv = Cv(64, 32, K)
+        cv.pieslice([20, 2, 44, 26], 180, 360, fill=(140, 230, 255))
+        cv.arc([22, 4, 42, 24], 200, 250, fill=(235, 252, 255), width=1.2)
+        cv.ellipse(ring((32, 9), 4), fill=(120, 210, 120))
+        cv.polygon([(33, 7), (37, 8), (37, 10), (33, 10)], fill=(15, 15, 25))
+        cv.ellipse([3, 12, 61, 28], fill=(150, 155, 172))
+        cv.ellipse([10, 21, 54, 31], fill=(95, 100, 118))
+        for i in range(6):
+            x = 10 + i * 9
+            cv.rectangle(
+                [x, 18, x + 3, 20],
+                fill=(255, 230, 60) if (i + f) % 2 else (255, 80, 60),
+            )
+        for x in (14, 24, 40, 50):
+            cv.ellipse(ring((x, 15), 0.8), fill=(210, 214, 226))
+        cv.rectangle([28, 28, 36, 31], fill=(60, 65, 80))
+        img.paste(
+            finish(cv.img, outline=1.4).resize((192, 96), Image.LANCZOS), (f * 192, 0)
         )
-    for x in (14, 24, 40, 50):
-        cv.ellipse(ring((x, 31), 0.8), fill=(210, 214, 226))
-    cv.rectangle([28, 44, 36, 47], fill=(60, 65, 80))
-
-
-def draw_plane(cv, f):
-    """Airforce jet for Rump: grey fighter facing right, afterburner blinks."""
-    grey, grey_d = (150, 158, 170), (95, 102, 114)
-    blue, white = (35, 70, 140), (240, 242, 248)
-    # fuselage
-    cv.polygon(
-        [(6, 30), (46, 27), (58, 31), (46, 35), (6, 34)],
-        fill=grey,
-    )
-    # nose cone
-    cv.polygon([(58, 31), (63, 31), (58, 29), (58, 33)], fill=grey_d)
-    # cockpit canopy
-    cv.ellipse([42, 25, 54, 32], fill=(90, 175, 220))
-    cv.arc([42, 25, 54, 32], 200, 340, fill=(220, 240, 255), width=0.8)
-    # main wing
-    cv.polygon([(18, 32), (40, 32), (28, 46), (14, 44)], fill=grey_d)
-    # wing stripe
-    cv.line([(20, 36), (34, 36)], fill=blue, width=1.2)
-    # vertical stabilizer
-    cv.polygon([(8, 30), (18, 29), (12, 16), (7, 18)], fill=grey)
-    cv.rectangle([9, 20, 14, 24], fill=blue)
-    # horizontal stabilizer
-    cv.polygon([(8, 34), (18, 34), (14, 40), (8, 38)], fill=grey_d)
-    # intake / engine nacelle
-    cv.ellipse([14, 33, 24, 39], fill=grey_d)
-    # USAF-style roundel
-    cv.ellipse(ring((30, 31), 2.8), fill=white)
-    cv.ellipse(ring((30, 31), 1.8), fill=blue)
-    cv.ellipse(ring((30, 31), 0.8), fill=(200, 40, 45))
-    # under-wing stores
-    cv.rectangle([22, 42, 34, 44], fill=(55, 58, 68))
-    cv.ellipse([33, 41.5, 36, 44.5], fill=(70, 72, 80))
-    # afterburner: alternates warm / hot
-    glow = (255, 200, 80) if f % 2 == 0 else (255, 90, 40)
-    cv.ellipse([1, 30, 8, 35], fill=glow)
-    cv.ellipse([2, 31, 6, 34], fill=(255, 250, 200) if f % 2 == 0 else (255, 180, 100))
-
-
-def ship_cell(name, f):
-    """One called-ship frame as a full fighter-sheet cell (centered in 64-unit space)."""
-    cv = Cv(64, 64, K)
-    if name == "rump":
-        draw_plane(cv, f)
-    else:
-        draw_ufo(cv, f)
-    return finish(cv.img, outline=1.4).resize((CELL, CELL), Image.LANCZOS)
+    return img
 
 
 def fx_sheet():  # bomb + 3 explosion frames
@@ -1390,6 +1345,7 @@ def main(args):
             save_argb(sheet(t), os.path.join(OUT, t + ".bmp"))
         elif t == "misc":
             save_argb(shots(), os.path.join(OUT, "shots.bmp"))
+            save_argb(ship_sheet(), os.path.join(OUT, "ship.bmp"))
             save_argb(fx_sheet(), os.path.join(OUT, "fx.bmp"))
         elif t == "bg":
             background().save(os.path.join(OUT, "background.bmp"))
