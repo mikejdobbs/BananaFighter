@@ -257,7 +257,7 @@ static const Character chars[] = {
         /* Charged special: calls the airforce (ship strike) */
         { .name="call airforce", .input=IN_HK, .cmd=CMD_HCF, .startup=18, .active=1, .recover=40, .dmg=80, .kb=60, .ship=5, .cost=60, .anim=A_SUPER },
     }},
-    { .name = "JV", .hp = 950, .lives = 3, .speed = 5, .jump = 26, .w = 64, .h = 158, .moves = {
+    { .name = "JV", .hp = 1100, .lives = 3, .speed = 4, .jump = 22, .w = 78, .h = 172, .moves = {
         { .name="grab", .input=IN_HP, .startup=5, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
         { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=43, .y=88, .h=24 },
         { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=57, .y=86, .h=30 },
