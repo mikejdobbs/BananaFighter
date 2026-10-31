@@ -24,7 +24,7 @@ unsigned aclk;                               /* Animation clock (ticks) */
 SDL_Renderer *renderer;                      /* Global renderer */
 static Anim an[MAX_PLAYERS];                 /* Per-slot animation state */
 static SDL_Texture *tex[NCHARS];             /* Fighter sheets (NULL => fallback boxes) */
-static SDL_Texture *shots, *shipt, *fxt, *bg;/* Other sprite sheets */
+static SDL_Texture *shots, *fxt, *bg;        /* Other sprite sheets */
 
 /* Load a BMP texture from sprites/ with alpha blending enabled; NULL on failure */
 static SDL_Texture *load_tex(const char *file)
@@ -55,7 +55,6 @@ void load_sprites(void)
             fprintf(stderr, "no sprites/%s: drawing %s as a box\n", fn, chars[i].name);
     }
     shots = load_tex("shots.bmp");
-    shipt = load_tex("ship.bmp");
     fxt   = load_tex("fx.bmp");
     bg    = load_tex("background.bmp");
 }
@@ -287,14 +286,19 @@ static void draw_boom(const Boom *b)
     }
 }
 
-/* Draw a ship (Z) */
+/* Draw a ship (Z): art comes from the caller's fighter sheet (ROW_SHIP) */
 static void draw_ship(const Ship *s)
 {
+    int ch = 0;
+    for (int i = 0; i < nf; i++)
+        if (F[i].slot == s->owner) { ch = F[i].ch; break; }
     float x = s->x * SCALE, y = GROUND - SHIP_Y * SCALE;
-    if (shipt) {
-        SDL_FRect src = { ((aclk / 8) % 2) * SHIP_FW, 0, SHIP_FW, SHIP_FH };
+    if (tex[ch]) {
+        int fr = (aclk / 8) % SHIP_FR;
+        SDL_FRect src = { fr * SPR_CELL, ROW_SHIP * SPR_CELL, SPR_CELL, SPR_CELL };
         SDL_FRect dst = { x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 2, SHIP_DRAW_W, SHIP_DRAW_H };
-        SDL_RenderTexture(renderer, shipt, &src, &dst);
+        SDL_RenderTextureRotated(renderer, tex[ch], &src, &dst, 0, NULL,
+                                 s->vx < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
     } else {
         box(x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 4, SHIP_DRAW_W, SHIP_DRAW_H / 2, 140, 145, 160, 255);
     }
@@ -396,9 +400,30 @@ void draw_options(void)
 
 /* =============================== Fighter select =============================== */
 
-/* Grid layout helpers for select screen cells */
+static int sel_scroll; /* first visible row of the character grid */
+
+static int sel_rows(void) { return (NCHARS + SEL_COLS - 1) / SEL_COLS; }
+static int sel_max_scroll(void)
+{
+    int extra = sel_rows() - SEL_VISIBLE_ROWS;
+    return extra > 0 ? extra : 0;
+}
+
+/* Keep the cursor's row inside the visible window */
+static void ensure_sel_scroll(int cur)
+{
+    int row = cur / SEL_COLS, max = sel_max_scroll();
+    if (row < sel_scroll) sel_scroll = row;
+    if (row >= sel_scroll + SEL_VISIBLE_ROWS) sel_scroll = row - SEL_VISIBLE_ROWS + 1;
+    if (sel_scroll > max) sel_scroll = max;
+    if (sel_scroll < 0) sel_scroll = 0;
+}
+
+/* Grid layout helpers for select screen cells (y is relative to the scroll window) */
 static int cell_x(int i) { return SW - (SEL_COLS * CELL_W + (SEL_COLS - 1) * CELL_GAP) - 60 + (i % SEL_COLS) * (CELL_W + CELL_GAP); }
-static int cell_y(int i) { return 130 + (i / SEL_COLS) * (CELL_H + CELL_GAP); }
+static int cell_y(int i) { return 130 + (i / SEL_COLS - sel_scroll) * (CELL_H + CELL_GAP); }
+static int grid_top(void) { return 130; }
+static int grid_h(void) { return SEL_VISIBLE_ROWS * CELL_H + (SEL_VISIBLE_ROWS - 1) * CELL_GAP; }
 
 /* Short label for an input bit (used in move list) */
 static const char *btn_label(int in)
@@ -493,32 +518,49 @@ void draw_select(int cur, int asel)
              m->cmd ? (m->cmd == CMD_QCF ? "QCF+" : "HCF+") : "", btn_label(m->input), cost);
     }
 
-    /* the grid */
-    for (int i = 0; i < NCHARS; i++) {
-        float x = cell_x(i), y = cell_y(i);
-        box(x, y, CELL_W, CELL_H, 30, 30, 48, 235);
-        idle_portrait(i, x + 11, y + 4, 128, 0);
-        text(x + 8, y + CELL_H - 34, "%.12s", chars[i].name);
-        if (i == cur) {                                 /* pulsing cursor */
-            int pulse = 160 + (int)(95 * ((aclk / 6) % 2));
-            box(x - 4, y - 4, CELL_W + 8, 4, pulse, pulse, 40, 255);
-            box(x - 4, y + CELL_H, CELL_W + 8, 4, pulse, pulse, 40, 255);
-            box(x - 4, y, 4, CELL_H, pulse, pulse, 40, 255);
-            box(x + CELL_W, y, 4, CELL_H, pulse, pulse, 40, 255);
+    /* the scrolling grid of fighter portraits */
+    ensure_sel_scroll(cur);
+    {
+        float gx = cell_x(0) - 4, gy = grid_top() - 4;
+        float gw = SEL_COLS * CELL_W + (SEL_COLS - 1) * CELL_GAP + 8, gh = grid_h() + 8;
+        SDL_Rect clip = { (int)gx, (int)gy, (int)gw, (int)gh };
+        SDL_SetRenderClipRect(renderer, &clip);
+        for (int i = 0; i < NCHARS; i++) {
+            int row = i / SEL_COLS;
+            if (row < sel_scroll || row >= sel_scroll + SEL_VISIBLE_ROWS) continue;
+            float x = cell_x(i), y = cell_y(i);
+            box(x, y, CELL_W, CELL_H, 30, 30, 48, 235);
+            idle_portrait(i, x + 11, y + 4, 128, 0);
+            text(x + 8, y + CELL_H - 34, "%.12s", chars[i].name);
+            if (i == cur) {                             /* pulsing cursor */
+                int pulse = 160 + (int)(95 * ((aclk / 6) % 2));
+                box(x - 4, y - 4, CELL_W + 8, 4, pulse, pulse, 40, 255);
+                box(x - 4, y + CELL_H, CELL_W + 8, 4, pulse, pulse, 40, 255);
+                box(x - 4, y, 4, CELL_H, pulse, pulse, 40, 255);
+                box(x + CELL_W, y, 4, CELL_H, pulse, pulse, 40, 255);
+            }
+            int tag = 0;                                /* who has picked this fighter */
+            for (int k = 0; k < nl; k++) {
+                if (U[k].ch != i) continue;
+                const Uint8 *pc = pal[U[k].slot % MAX_PLAYERS];
+                float tx = x + 6 + tag++ * 22, ty = y + CELL_H - 18;
+                box(tx, ty, 18, 14, pc[0], pc[1], pc[2], 255);
+                text(tx + 5, ty + 3, "%d", U[k].slot);
+                if (U[k].ready) box(tx, ty + 14, 18, 2, 255, 255, 255, 255);
+            }
         }
-        int tag = 0;                                    /* who has picked this fighter */
-        for (int k = 0; k < nl; k++) {
-            if (U[k].ch != i) continue;
-            const Uint8 *pc = pal[U[k].slot % MAX_PLAYERS];
-            float tx = x + 6 + tag++ * 22, ty = y + CELL_H - 18;
-            box(tx, ty, 18, 14, pc[0], pc[1], pc[2], 255);
-            text(tx + 5, ty + 3, "%d", U[k].slot);
-            if (U[k].ready) box(tx, ty + 14, 18, 2, 255, 255, 255, 255);
-        }
+        SDL_SetRenderClipRect(renderer, NULL);
+
+        /* scroll cues when more fighters sit above/below the window */
+        float mid = gx + gw / 2;
+        if (sel_scroll > 0)
+            text(mid - 20, gy - 16, "^ more");
+        if (sel_scroll < sel_max_scroll())
+            text(mid - 20, gy + gh + 2, "v more");
     }
 
     /* short help under the grid; the full controls are in the options menu */
-    float hx = cell_x(0), hy = cell_y(NCHARS - 1) + CELL_H + CELL_GAP + 8;
+    float hx = cell_x(0), hy = grid_top() + grid_h() + 22;
     text(hx, hy,      "Move: arrows/WASD/pad   Lock in: attack/Enter/Start");
     text(hx, hy + 16, "T or Back: add a bot as %s (%s)", c->name, nai ? aiName[asel] : "-");
     text(hx, hy + 32, "[ ] or shoulders: bot AI   Backspace/Delete: remove");
