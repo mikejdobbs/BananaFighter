@@ -30,8 +30,8 @@ sprites/, sounds/        client assets
 
 ## Building
 
-Requires CMake 3.16+ and a C11 compiler. The server needs only POSIX sockets. The client needs SDL3 and is skipped
-(with a warning) if SDL3 is not found.
+Requires CMake 3.16+ and a C11 compiler, and **libsodium** (`libsodium-dev`) for mandatory wire encryption.
+The server needs POSIX sockets. The client needs SDL3 and is skipped (with a warning) if SDL3 is not found.
 
 ```
 cmake -B build
