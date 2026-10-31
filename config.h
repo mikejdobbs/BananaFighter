@@ -10,6 +10,8 @@
 #define MIN_PLAYERS   2         /* needed to start a match */
 #define STAGE_W       1400
 #define GRAVITY       2
+#define JUMP_NUM      3         /* jump velocity = character jump * JUMP_NUM / JUMP_DEN */
+#define JUMP_DEN      2
 #define HITSTUN       12
 #define THROW_STUN    30        /* ticks a thrown victim is helpless */
 #define THROW_LIFT    50        /* upward launch speed of a throw */
@@ -68,7 +70,8 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    cost:   super meter needed (and spent). Non-throw melee hits everyone in range.
    ship:   calls a ship that drops this many bombs; dmg and kb apply per bomb.
    boom:   on the active frame, area damage at the attacker (like a bomb; owner immune).
-   spin:   the projectile's sprite spins in flight (client only). */
+   spin:   the projectile's sprite spins in flight (client only).
+   leap:   forward speed during the leap; leap_vy is the initial rise (0 = ~70% of jump). */
 typedef struct {
     const char *name;
     int input, cmd, air, crouch;
@@ -79,6 +82,7 @@ typedef struct {
     int spread, spread_vy;
     int invis, throw, cost;
     int ship, boom, spin, anim;
+    int leap, leap_vy;
 } Move;
 
 /* fly: tail thrust per tick (0 = cannot fly); fuel: ticks of flight on a full tank. */
@@ -144,13 +148,13 @@ static const Character chars[] = {
         { .name="blade hand", .input=IN_HP, .startup=6, .active=3, .recover=12, .dmg=62, .kb=14, .reach=73, .y=70, .h=40 },
         { .name="ankle", .input=IN_LK, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=56, .y=8, .h=25 },
         { .name="sweep", .input=IN_MK, .startup=6, .active=3, .recover=10, .dmg=45, .kb=10, .reach=76, .y=0, .h=30 },
-        { .name="flying kick", .input=IN_HK, .startup=8, .active=4, .recover=14, .dmg=70, .kb=16, .reach=85, .y=35, .h=55 },
+        { .name="flying kick", .input=IN_HK, .startup=4, .active=8, .recover=16, .dmg=70, .kb=16, .reach=68, .y=22, .h=58, .leap=15 },
         { .name="crouch quick hand", .input=IN_LP, .crouch=1, .startup=2, .active=2, .recover=5, .dmg=20, .kb=4, .reach=47, .y=37, .h=22 },
         { .name="crouch palm", .input=IN_MP, .crouch=1, .startup=4, .active=3, .recover=8, .dmg=38, .kb=8, .reach=58, .y=37, .h=30 },
         { .name="crouch blade hand", .input=IN_HP, .crouch=1, .startup=6, .active=3, .recover=14, .dmg=62, .kb=14, .reach=73, .y=35, .h=40 },
         { .name="crouch ankle", .input=IN_LK, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=56, .y=4, .h=25 },
         { .name="crouch sweep", .input=IN_MK, .crouch=1, .startup=6, .active=3, .recover=10, .dmg=45, .kb=10, .reach=76, .y=0, .h=30 },
-        { .name="crouch flying kick", .input=IN_HK, .crouch=1, .startup=8, .active=4, .recover=16, .dmg=70, .kb=16, .reach=85, .y=17, .h=55 },
+        { .name="crouch flying kick", .input=IN_HK, .crouch=1, .startup=5, .active=7, .recover=16, .dmg=70, .kb=16, .reach=78, .y=17, .h=55, .leap=12 },
         { .name="air light punch", .input=IN_LP, .air=1, .startup=2, .active=14, .recover=5, .dmg=28, .kb=6, .reach=54, .y=15, .h=45 },
         { .name="air medium punch", .input=IN_MP, .air=1, .startup=2, .active=14, .recover=5, .dmg=38, .kb=8, .reach=54, .y=15, .h=45 },
         { .name="air heavy punch", .input=IN_HP, .air=1, .startup=3, .active=14, .recover=6, .dmg=49, .kb=10, .reach=58, .y=15, .h=45 },

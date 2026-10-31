@@ -15,6 +15,23 @@ static int hurt_top(const Player *v, const Character *vc) {
     return v->body.y + h;
 }
 
+static int hitstun_for(const Move *m)
+{
+    switch (m->input) {
+    case IN_LP:
+    case IN_LK:
+        return HITSTUN - 4;
+    case IN_MP:
+    case IN_MK:
+        return HITSTUN;
+    case IN_HP:
+    case IN_HK:
+        return HITSTUN + 4;
+    default:
+        return HITSTUN;
+    }
+}
+
 static void hurt(Player *a, Player *v, const Move *m, int dir) {
     Body *vb = &v->body;
 
@@ -36,8 +53,8 @@ static void hurt(Player *a, Player *v, const Move *m, int dir) {
             vb->vx = dir * (m->kb > 0 ? m->kb : THROW_KB);
             vb->vy = THROW_LIFT;
         } else {
-            /* Apply standard hitstun and horizontal knockback */
-            vb->stun = HITSTUN;
+            /* Apply hitstun (heavier buttons last longer) and horizontal knockback */
+            vb->stun = hitstun_for(m);
             vb->vx = dir * m->kb / 4;
             vb->crouch = 0;
             /* Crouching heavy kick: trip — fall in place, then get up */

@@ -154,8 +154,12 @@ static void pick(const Fig *f, int *row, int *col)
     else if (f->st == -4) { *row = ROW_FLY; *col = (aclk / 2) % FLY_FR; }
     else if (f->st == -5) { *row = ROW_CROUCH; *col = a->t < 4 ? 0 : 1; }
     else if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
-        *row = ROW_MOVE + move_row(&c->moves[f->st]);
-        *col = move_frame(&c->moves[f->st], a->t);
+        const Move *m = &c->moves[f->st];
+        *row = ROW_MOVE + move_row(m);
+        if (m->leap && f->y > 40) *col = 4;
+        else if (m->leap && f->y > 12) *col = 3;
+        else if (m->leap && f->y > 0) *col = 2;
+        else *col = move_frame(m, a->t);
     }
     else if (f->y > 0) {
         *row = ROW_JUMP;
@@ -414,7 +418,7 @@ void draw_options(void)
     text(x + 24, y + 252, "Up/Down: select   Enter or pad A: choose   Esc or Start: resume");
     text(x + 24, y + 280, "CONTROLS");
     text(x + 24, y + 298, "Keyboard: arrows/WASD move, U I O punch, J K L kick");
-    text(x + 24, y + 314, "Alt keys: Z X C punch, V B N kick.  Hold AWAY to block");
+    text(x + 24, y + 314, "Alt keys: Z X C punch, V B N kick.  AWAY blocks; AWAY+UP jumps back");
     text(x + 24, y + 330, "Gamepad: d-pad/stick move, X Y RB punch, A B RT kick");
     text(x + 24, y + 346, "QCF+punch = fireball.  HCF+button = super / big special");
     text(x + 24, y + 362, "Squirrel: hold jump in the air to fly.  Jump and press an attack");

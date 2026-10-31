@@ -16,6 +16,11 @@ enum { EV_SPAWN = 1, EV_MELEE = 2 };    /* effects the caller (server) must appl
 static inline int lo(int a, int b) { return a < b ? a : b; }
 static inline int hi(int a, int b) { return a > b ? a : b; }
 
+static inline int jump_vel(const Character *c)
+{
+    return c->jump * JUMP_NUM / JUMP_DEN;
+}
+
 /* Does the window w[0..n-1] (oldest..newest) contain the motion in seq?
    Letters: d = down, D = down+forward, f = forward, b = back, B = down+back.
    Each tick advances at most one step; extra ticks in between are forgiven. */
@@ -106,6 +111,12 @@ static inline int body_step(Body *body, const Character *character,
         body->crouch = (body->y == 0 && m->crouch);
 
         int f = body->frame++;
+        if (m->leap && !m->crouch && f == m->startup && body->y == 0) {
+            int vy = m->leap_vy ? m->leap_vy : jump_vel(character);
+            if (vy > 0) body->vy = vy;
+        }
+        if (m->leap && f >= m->startup && f < m->startup + m->active + m->recover)
+            body->vx = body->face * m->leap;
         if (f == m->startup && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
         else if (!m->proj_speed && !m->ship && (m->dmg || m->boom) && !body->hit
                  && f >= m->startup && f < m->startup + m->active) ev |= EV_MELEE;
@@ -118,24 +129,24 @@ static inline int body_step(Body *body, const Character *character,
         int away = body->face > 0 ? !!(in & IN_L) : !!(in & IN_R);
         int airborne = body->y > 0;
         int ducking = !airborne && (in & IN_D);   /* holding down on the ground */
-        int blocking = !airborne && away;         /* holding away on the ground */
+        int want_jump = !airborne && (in & IN_U); /* jump beats standing block (back + up) */
+        int blocking = !airborne && away && !want_jump;
 
         /* Ducking and blocking are independent: down + away is a crouching block. */
         if (ducking) body->crouch = 1;
         if (blocking) body->block = 1;
 
-        if (ducking || blocking) {
-            /* No free movement while ducking or blocking. A standing block backs
-               away slowly; a crouching fighter stays put. */
+        if ((ducking && !want_jump) || blocking) {
+            /* No walk/jump while ducking or blocking. A standing block backs away slowly. */
             if (blocking && !ducking)
                 body->vx = (body->face > 0 ? -character->speed : character->speed) * 2 / 3;
             else
                 body->vx = 0;
         } else {
-            /* Free movement: walk, jump, fly */
+            /* Walk, jump (including backward), or tail flight */
             body->vx = ((in & IN_R) ? character->speed : 0) - ((in & IN_L) ? character->speed : 0);
-            if (in & IN_U) { /* Jump! */
-                if (body->y == 0) body->vy = character->jump;
+            if (in & IN_U) {
+                if (body->y == 0) body->vy = jump_vel(character);
                 else if (character->fly && body->fuel > 0) { /* tail flight: hover and climb */
                     body->flying = 1;
                     body->fuel--;
@@ -178,8 +189,9 @@ static inline int body_step(Body *body, const Character *character,
     if (body->y <= 0) {
         body->y = body->vy = 0;
         if (body->move >= 0) {
-            body->vx = 0;
-            if (character->moves[body->move].air) body->move = -1; /* landing ends a jump attack */
+            const Move *lm = &character->moves[body->move];
+            if (!lm->leap) body->vx = 0;
+            if (lm->air) body->move = -1; /* landing ends a jump attack */
         }
         if (character->fuel) body->fuel = lo(character->fuel, body->fuel + FUEL_REGEN);
     }
