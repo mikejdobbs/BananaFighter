@@ -2,15 +2,28 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "client.h"
+#include "server/embed.h"
 
 int main(int argc, char **argv)
 {
-    const char *serverHost = argc > 1 ? argv[1] : "127.0.0.1";
+    int hosting = argc <= 1;
+    const char *serverHost = hosting ? "127.0.0.1" : argv[1];
     char serverPort[8];
     snprintf(serverPort, sizeof serverPort, "%d", argc > 2 ? atoi(argv[2]) : PORT);
 
-    if ((networkSocketFd = dial(serverHost, serverPort)) < 0) { fprintf(stderr, "cannot connect to %s:%s\n", serverHost, serverPort); return 1; }
-    if (!SDL_Init(SDL_INIT_VIDEO)) { fprintf(stderr, "SDL init error: %s\n", SDL_GetError()); return 1; }
+    if (hosting) {
+        if (server_embed_start() < 0) {
+            fprintf(stderr, "cannot start embedded server on port %s\n", serverPort);
+            return 1;
+        }
+    }
+
+    if ((networkSocketFd = dial(serverHost, serverPort)) < 0) {
+        fprintf(stderr, "cannot connect to %s:%s\n", serverHost, serverPort);
+        if (hosting) server_embed_stop();
+        return 1;
+    }
+    if (!SDL_Init(SDL_INIT_VIDEO)) { fprintf(stderr, "SDL init error: %s\n", SDL_GetError()); if (hosting) server_embed_stop(); return 1; }
     SDL_Window *window;
     
     if (!SDL_CreateWindowAndRenderer("BananaFighter", SW, SH, 0, &window, &renderer)) {
@@ -121,6 +134,7 @@ int main(int argc, char **argv)
         SDL_RenderPresent(renderer);
     }
     close(networkSocketFd);
+    if (hosting) server_embed_stop();
     SDL_Quit();
     return 0;
 }

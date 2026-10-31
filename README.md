@@ -1,9 +1,13 @@
 # BananaFighter
 A OSS Fighting Game
 
-A small networked fighting game: a headless C server that runs the match simulation, and an optional SDL3 client.
+A small networked fighting game: a C server that runs the match simulation, and an optional SDL3 client.
 Up to `MAX_PLAYERS` fighters (humans and computer-controlled bots) share one stage. The server is authoritative and
 ticks at `TICK_HZ`.
+
+Server logic lives once in the `fighter_server` library. The dedicated `./server` binary and the client both link it.
+With no arguments, `./client` starts an embedded listen server on a background thread and connects to
+`127.0.0.1:PORT`. Pass a host (and optional port) to join a remote or dedicated server instead.
 
 ## Layout
 
@@ -12,7 +16,8 @@ CMakeLists.txt
 sim.h, config.h          shared by client and server (simulation types, constants)
 server/
   server.h               types, shared state, prototypes, protocol notes
-  main.c                 sockets, poll() loop, tick scheduling
+  embed.h / embed.c      public start/stop API and poll() loop (pthread for listen)
+  main.c                 dedicated server entry (calls server_run_forever)
   util.c                 now_ms, make_token, overlap, nearest, slot helpers
   state.c                global state, lobby/match lifecycle, bots, drop()
   combat.c               hits, projectiles, bombs, ships, melee
@@ -31,18 +36,22 @@ Requires CMake 3.16+ and a C11 compiler. The server needs only POSIX sockets. Th
 ```
 cmake -B build
 cmake --build build
-./build/server
+./build/client              # hosts locally (embedded server) and plays
+./build/server              # dedicated / headless (for other machines or CI)
+./build/client 192.0.2.1    # join a remote host (optional port as 2nd arg)
 ```
 
 For Xcode: `cmake -B buildx -G Xcode`. Headers are listed as target sources so they appear in the project.
 
 The server is built with `-std=c11` (extensions off) and defines `_POSIX_C_SOURCE 200809L` at the top of
-`server/server.h`; keep that define before any system include.
+`server/server.h`; keep that define before any system include. The client must include `embed.h` only, not
+`server.h` (overlapping types and symbols).
 
 ## How it works
 
-The server uses a single thread and one `poll()` loop over the TCP listener, each client socket and the UDP socket.
-Every `1000 / TICK_HZ` ms it runs `step()`, checks UDP timeouts, then sends each client its state.
+The server uses one `poll()` loop over the TCP listener, each client socket and the UDP socket. In the dedicated
+binary that loop owns the process; in the client it runs on a background thread. Every `1000 / TICK_HZ` ms it runs
+`step()`, checks UDP timeouts, then sends each client its state.
 
 Two phases:
 

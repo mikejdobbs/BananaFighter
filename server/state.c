@@ -6,10 +6,10 @@ Ship   ships[MAX_PLAYERS];
 Boom   explosions[MAXBOOM];
 
 int    udp_fd = -1;
-int    phase;
-int    tick;
+int    srv_phase;
+int    srv_tick;
 int    over;
-int    winner;
+int    srv_winner;
 
 void clear_fx(void)
 {
@@ -111,10 +111,10 @@ void check_start(void)
     clear_fx();
 
     /* Enter active play and reset match-wide state. */
-    phase = PLAY;
-    tick = 0;
+    srv_phase = PLAY;
+    srv_tick = 0;
     over = 0;
-    winner = 0;
+    srv_winner = 0;
 
     fprintf(stderr, "match start: %d fighters\n", fighter_count);
 }
@@ -123,7 +123,7 @@ void end_match(void)
 {
     for (int i = 0; i < MAX_PLAYERS; i++) { players[i].in_match = 0; players[i].ready = players[i].bot; }
     clear_fx();
-    phase = LOBBY;
+    srv_phase = LOBBY;
     over = 0;
 }
 

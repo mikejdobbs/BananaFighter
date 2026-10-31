@@ -77,7 +77,7 @@ static void update_player(int i)
 
 void step(void)
 {
-    if (phase == LOBBY)
+    if (srv_phase == LOBBY)
         { check_start(); return; }
 
     if (over)
@@ -95,6 +95,6 @@ void step(void)
         if (fighting(&players[i]))
             { n++; last = i; }
     
-    if (n <= 1) { over = 1; winner = n ? last + 1 : 0; }   /* winner: slot + 1, 0 = none */
-    tick++;
+    if (n <= 1) { over = 1; srv_winner = n ? last + 1 : 0; }   /* winner: slot + 1, 0 = none */
+    srv_tick++;
 }

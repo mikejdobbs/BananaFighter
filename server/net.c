@@ -15,7 +15,7 @@ void send_state(int v) {
     char buf[UDP_PKT_MAX];
     int n;
 
-    if (phase == LOBBY) {
+    if (srv_phase == LOBBY) {
         n = snprintf(buf, sizeof buf, "L");
         for (int k = 0; k < MAX_PLAYERS; k++)
             if (player_is_person_or_bot(&players[k]) &&
@@ -24,7 +24,7 @@ void send_state(int v) {
                               players[k].s_character, players[k].ready,
                               players[k].bot ? players[k].ai + 1 : 0);
     } else { // NOT IN LOBBY
-        n = snprintf(buf, sizeof buf, "S %d %d %d", tick, winner,
+        n = snprintf(buf, sizeof buf, "S %d %d %d", srv_tick, srv_winner,
                      players[v].num_ack_by_server);
 
         // share players
@@ -88,7 +88,7 @@ void send_state(int v) {
         n = (int)sizeof buf - 2; /* snprintf reports the untruncated length */
     buf[n++] = '\n';
 
-    if (phase == LOBBY) { /* reliable: TCP */
+    if (srv_phase == LOBBY) { /* reliable: TCP */
         ssize_t r = send(players[v].fd, buf, n, 0);
         if (r != n && !(r < 0 && errno == EAGAIN))
             drop(v);                /* error or partial write */
@@ -138,10 +138,10 @@ static void handle_line_in_lobby(int player_num, char *line) {
     Player *player = &players[player_num];
     int character, ai;
 
-    if (phase == LOBBY && !player->in_match &&
+    if (srv_phase == LOBBY && !player->in_match &&
         sscanf(line, "B %d %d", &character, &ai) == 2)
         add_bot(character, ai); /* B <char> <ai>: any number of bots */
-    else if (phase == LOBBY && !player->in_match &&
+    else if (srv_phase == LOBBY && !player->in_match &&
              sscanf(line, "X %d", &character) == 1)
         del_bot(character); /* X <slot> removes a bot */
     else if (sscanf(line, "J %d", &character) == 1 && !player->in_match &&
@@ -150,7 +150,7 @@ static void handle_line_in_lobby(int player_num, char *line) {
             (character >= 0 && character < NCHARS)
                 ? character
                 : 0; /* J <char>: hover/pick; locked-in fighters can't change */
-    else if (line[0] == 'R' && phase == LOBBY && !player->in_match)
+    else if (line[0] == 'R' && srv_phase == LOBBY && !player->in_match)
         player->ready ^= 1;
 }
 
@@ -238,7 +238,7 @@ void read_udp(void) {
 
         /* Only input packets during active play, from players in the match,
          * carry data that needs to be parsed. */
-        if (packet_type != 'I' || phase != PLAY || !player->in_match ||
+        if (packet_type != 'I' || srv_phase != PLAY || !player->in_match ||
             header_length == 0)
             continue;
 

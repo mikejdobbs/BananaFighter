@@ -11,6 +11,8 @@ endif()
 
 set(WARNINGS -Wall -Wextra)
 
+find_package(Threads REQUIRED)
+
 # Headers shared by the client and server (sim.h is used by both; listed so they show up in Xcode)
 set(SHARED_HEADERS
   sim.h
@@ -18,10 +20,12 @@ set(SHARED_HEADERS
 
 set(SERVER_HEADERS
   server/server.h
-  server/ai.h)
+  server/ai.h
+  server/embed.h)
 
-add_executable(server
-  server/main.c
+# Server logic lives once here; dedicated binary and client both link it.
+add_library(fighter_server STATIC
+  server/embed.c
   server/util.c
   server/state.c
   server/combat.c
@@ -29,7 +33,14 @@ add_executable(server
   server/net.c
   ${SERVER_HEADERS}
   ${SHARED_HEADERS})
-target_include_directories(server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} server)
+target_include_directories(fighter_server PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/server)
+target_compile_options(fighter_server PRIVATE ${WARNINGS})
+target_link_libraries(fighter_server PUBLIC Threads::Threads)
+
+add_executable(server server/main.c)
+target_link_libraries(server PRIVATE fighter_server)
 target_compile_options(server PRIVATE ${WARNINGS})
 
 # ---------------------------------------------------------------------------
@@ -73,7 +84,7 @@ if(SDL3_FOUND)
     ${SHARED_HEADERS})
   target_include_directories(client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} client)
   target_compile_options(client PRIVATE ${WARNINGS})
-  target_link_libraries(client PRIVATE SDL3::SDL3)
+  target_link_libraries(client PRIVATE SDL3::SDL3 fighter_server)
   # sprites and sounds are loaded from <exe dir>/..., falling back to the current directory
   foreach(dir sprites sounds)
     add_custom_command(TARGET client POST_BUILD

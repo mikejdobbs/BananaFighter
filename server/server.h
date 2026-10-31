@@ -107,10 +107,10 @@ extern Proj   projectiles[MAXPROJ];   /* pool of live shots and bombs */
 extern Ship   ships[MAX_PLAYERS];     /* indexed by the owner's slot: one ship per caller */
 extern Boom   explosions[MAXBOOM];    /* pool of live explosion effects */
 extern int    udp_fd;                 /* the gameplay datagram socket */
-extern int    phase;                  /* LOBBY (the fighter-select screen) or PLAY (a match) */
-extern int    tick;                   /* ticks since the current match started */
+extern int    srv_phase;              /* LOBBY (the fighter-select screen) or PLAY (a match) */
+extern int    srv_tick;               /* ticks since the current match started */
 extern int    over;                   /* 0 while fighting; counts up once the match ends, until ROUND_WAIT */
-extern int    winner;                 /* slot + 1 of the winner, or 0 if undecided or a draw */
+extern int    srv_winner;             /* slot + 1 of the winner, or 0 if undecided or a draw */
 
 /* util.c */
 long long          now_ms(void);
