@@ -37,6 +37,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "crypto_session.h"
+
 /* Values that mirror config.h / server.h. */
 #define DEFAULT_PORT 7777
 #define SERVER_MAX_PLAYERS 10
@@ -49,6 +51,7 @@
 static const char *server_host = "127.0.0.1";
 static int server_port = DEFAULT_PORT;
 static const char *server_path = NULL;
+static const char *spawn_server_key = NULL;
 static int run_slow_tests = 0;
 static int verbose = 0;
 static pid_t server_pid = -1;
@@ -128,6 +131,8 @@ typedef struct {
     int len;
     int slot;
     unsigned long long token;
+    CryptoSession crypto;
+    int crypto_ready;
 } Client;
 
 static Client client_pool[MAX_TEST_CLIENTS];
@@ -186,6 +191,18 @@ static int tcp_send_raw(Client *c, const void *data, size_t len) {
     return send(c->tcp_fd, data, len, 0) == (ssize_t)len;
 }
 
+static int test_line_cb(void *ctx, char *line)
+{
+    Client *c = ctx;
+    int l = (int)strlen(line);
+    if (c->len + l + 1 >= (int)sizeof c->buf)
+        return -1;
+    memcpy(c->buf + c->len, line, (size_t)l);
+    c->buf[c->len + l] = '\n';
+    c->len += l + 1;
+    return 0;
+}
+
 static int tcp_send(Client *c, const char *fmt, ...) {
     char text[512];
     va_list ap;
@@ -193,17 +210,27 @@ static int tcp_send(Client *c, const char *fmt, ...) {
     int n = vsnprintf(text, sizeof text, fmt, ap);
     va_end(ap);
     if (n < 0 || n >= (int)sizeof text) return 0;
-    return tcp_send_raw(c, text, (size_t)n);
+    if (!c->crypto_ready)
+        return tcp_send_raw(c, text, (size_t)n);
+    return crypto_session_tcp_send(c->tcp_fd, &c->crypto, text, (size_t)n) == 0;
 }
 
-static int udp_send_to(int fd, const char *fmt, ...) {
+static int udp_send_to(Client *c, int fd, const char *fmt, ...)
+{
     char text[SERVER_UDP_PKT_MAX + 1];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(text, sizeof text, fmt, ap);
     va_end(ap);
     if (n < 0 || n >= (int)sizeof text) return 0;
-    return send(fd, text, (size_t)n, 0) == n;
+    if (!c->crypto_ready)
+        return send(fd, text, (size_t)n, 0) == n;
+    unsigned char wire[SERVER_UDP_PKT_MAX + 64];
+    size_t wire_len;
+    if (crypto_session_udp_seal(&c->crypto, wire, sizeof wire, text, (size_t)n,
+                                &wire_len) != 0)
+        return 0;
+    return send(fd, wire, wire_len, 0) == (ssize_t)wire_len;
 }
 
 /*
@@ -228,14 +255,22 @@ static int read_line(Client *c, char *out, size_t out_size, int timeout_ms) {
         if (left < 0) left = 0;
         if (!wait_readable(c->tcp_fd, (int)left)) return 0;
         if (c->len >= (int)sizeof c->buf) c->len = 0; /* discard junk */
-        ssize_t r = recv(c->tcp_fd, c->buf + c->len,
-                         sizeof c->buf - (size_t)c->len, 0);
+        unsigned char chunk[CRYPTO_SESSION_TCP_IO_MAX];
+        ssize_t r = recv(c->tcp_fd, chunk, sizeof chunk, 0);
         if (r == 0) return -1;
         if (r < 0) {
             if (errno == EINTR || errno == EAGAIN) continue;
             return -1;
         }
-        c->len += (int)r;
+        if (c->crypto_ready) {
+            if (crypto_session_tcp_feed(&c->crypto, chunk, (size_t)r,
+                                        test_line_cb, c) != 0)
+                return -1;
+        } else {
+            if (c->len + r >= (int)sizeof c->buf) c->len = 0;
+            memcpy(c->buf + c->len, chunk, (size_t)r);
+            c->len += (int)r;
+        }
     }
 }
 
@@ -252,11 +287,32 @@ static int wait_for_prefix(Client *c, const char *prefix, char *out,
     }
 }
 
-/* Connect and consume the three handshake lines. Returns 1 on success. */
+static int crypto_upgrade(Client *c, const char *server_k_body)
+{
+    char k_line[TCP_LINE_BUFFER];
+    snprintf(k_line, sizeof k_line, "%s\n", server_k_body);
+    crypto_session_begin(&c->crypto);
+    char k_out[128];
+    int kn = crypto_session_format_k_line(k_out, sizeof k_out, &c->crypto);
+    if (kn < 0 || send(c->tcp_fd, k_out, (size_t)kn, 0) != kn)
+        return 0;
+    if (crypto_session_finish_handshake(&c->crypto, k_line) != 0)
+        return 0;
+    c->crypto_ready = 1;
+    c->len = 0;
+    return 1;
+}
+
+/* Connect, K exchange, then consume Y/A/U. Returns 1 on success. */
 static int handshake(Client *c) {
     char line[TCP_LINE_BUFFER];
     c->tcp_fd = tcp_connect_fd();
     if (c->tcp_fd < 0) return 0;
+    if (read_line(c, line, sizeof line, 2000) != 1 || line[0] != 'K')
+        return 0;
+    if (!crypto_upgrade(c, line))
+        return 0;
+    sleep_ms(50);
     if (read_line(c, line, sizeof line, 2000) != 1 ||
         sscanf(line, "Y %d", &c->slot) != 1)
         return 0;
@@ -336,20 +392,26 @@ typedef struct {
 } Snapshot;
 
 /* Wait for an "S tick winner ack ..." datagram. Returns 1 on success. */
-static int wait_snapshot(int fd, Snapshot *snap, int timeout_ms) {
+static int wait_snapshot(Client *c, int fd, Snapshot *snap, int timeout_ms) {
     long long deadline = now_ms() + timeout_ms;
     for (;;) {
         long long left = deadline - now_ms();
         if (left < 0) left = 0;
         if (!wait_readable(fd, (int)left)) return 0;
-        char buf[SERVER_UDP_PKT_MAX + 64];
-        ssize_t r = recv(fd, buf, sizeof buf - 1, 0);
+        unsigned char wire[SERVER_UDP_PKT_MAX + 64];
+        char buf[SERVER_UDP_PKT_MAX + 1];
+        ssize_t r = recv(fd, wire, sizeof wire, 0);
         if (r < 0) {
             if (errno == EINTR || errno == EAGAIN) continue;
             return 0;
         }
-        buf[r] = '\0';
-        if (r > 0 && buf[r - 1] == '\n') buf[r - 1] = '\0';
+        size_t plain_len;
+        if (!c->crypto_ready ||
+            crypto_session_udp_open(&c->crypto, wire, (size_t)r, buf,
+                                    sizeof buf, &plain_len) != 0)
+            continue;
+        buf[plain_len] = '\0';
+        if (plain_len > 0 && buf[plain_len - 1] == '\n') buf[plain_len - 1] = '\0';
         if (buf[0] == 'S' &&
             sscanf(buf, "S %d %d %d", &snap->tick, &snap->winner, &snap->ack) == 3) {
             snprintf(snap->line, sizeof snap->line, "%s", buf);
@@ -379,11 +441,11 @@ static int start_match(Client *c, Snapshot *first) {
     if (!handshake(c)) return 0;
     c->udp_fd = udp_open_fd();
     if (c->udp_fd < 0) return 0;
-    udp_send_to(c->udp_fd, "H %d %llx", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "H %d %llx", c->slot, c->token);
     tcp_send(c, "B 0 0\n");
     if (!wait_lobby_count(c, 2, 2000)) return 0;
     tcp_send(c, "R\n");
-    return wait_snapshot(c->udp_fd, first, 3000);
+    return wait_snapshot(c, c->udp_fd, first, 3000);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -392,9 +454,14 @@ static int start_match(Client *c, Snapshot *first) {
 
 static void test_handshake_format(void) {
     Client *c = new_client();
-    char y_line[TCP_LINE_BUFFER], a_line[TCP_LINE_BUFFER], u_line[TCP_LINE_BUFFER];
+    char k_line[TCP_LINE_BUFFER], y_line[TCP_LINE_BUFFER], a_line[TCP_LINE_BUFFER],
+        u_line[TCP_LINE_BUFFER];
     c->tcp_fd = tcp_connect_fd();
     REQUIRE(c->tcp_fd >= 0, "cannot connect to %s:%d", server_host, server_port);
+
+    REQUIRE(read_line(c, k_line, sizeof k_line, 2000) == 1, "no K line");
+    CHECK(k_line[0] == 'K', "first line should be K handshake, got '%s'", k_line);
+    REQUIRE(crypto_upgrade(c, k_line), "encrypted handshake failed");
 
     REQUIRE(read_line(c, y_line, sizeof y_line, 2000) == 1, "no Y line");
     REQUIRE(read_line(c, a_line, sizeof a_line, 2000) == 1, "no A line");
@@ -630,9 +697,9 @@ static void test_match_starts_with_bot(void) {
     /* Ticks must advance at roughly TICK_HZ (60/s). */
     long long t0 = now_ms();
     sleep_ms(500);
-    udp_send_to(c->udp_fd, "H %d %llx", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "H %d %llx", c->slot, c->token);
     drain_udp(c->udp_fd);
-    REQUIRE(wait_snapshot(c->udp_fd, &s2, 1000), "no snapshot after waiting");
+    REQUIRE(wait_snapshot(c, c->udp_fd, &s2, 1000), "no snapshot after waiting");
     long long elapsed = now_ms() - t0;
     int ticks = s2.tick - s1.tick;
     CHECK(ticks > 0, "tick did not advance (%d -> %d)", s1.tick, s2.tick);
@@ -651,12 +718,12 @@ static void test_udp_input_ack(void) {
     CHECK(snap.ack == 0, "ack should start at 0, got %d", snap.ack);
 
     /* Five inputs numbered 0..4. */
-    udp_send_to(c->udp_fd, "I %d %llx 0 0 0 0 0 0", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 0 0 0 0 0 0", c->slot, c->token);
 
     int ack = 0;
     long long deadline = now_ms() + 2000;
     while (now_ms() < deadline && ack < 5) {
-        if (!wait_snapshot(c->udp_fd, &snap, 200)) continue;
+        if (!wait_snapshot(c, c->udp_fd, &snap, 200)) continue;
         ack = snap.ack;
     }
     CHECK(ack >= 1, "ack never increased after sending inputs");
@@ -664,28 +731,28 @@ static void test_udp_input_ack(void) {
     /* Let the ack settle, then replay the same packet. It must be ignored. */
     sleep_ms(400);
     drain_udp(c->udp_fd);
-    REQUIRE(wait_snapshot(c->udp_fd, &snap, 1000), "no snapshot");
+    REQUIRE(wait_snapshot(c, c->udp_fd, &snap, 1000), "no snapshot");
     int settled = snap.ack;
 
-    udp_send_to(c->udp_fd, "I %d %llx 0 0 0 0 0 0", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 0 0 0 0 0 0", c->slot, c->token);
     sleep_ms(400);
     drain_udp(c->udp_fd);
-    REQUIRE(wait_snapshot(c->udp_fd, &snap, 1000), "no snapshot");
+    REQUIRE(wait_snapshot(c, c->udp_fd, &snap, 1000), "no snapshot");
     CHECK(snap.ack == settled, "duplicate inputs changed ack (%d -> %d)", settled, snap.ack);
 
     /* A negative sequence number must be rejected. */
-    udp_send_to(c->udp_fd, "I %d %llx -1 1 1 1", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx -1 1 1 1", c->slot, c->token);
     sleep_ms(300);
     drain_udp(c->udp_fd);
-    REQUIRE(wait_snapshot(c->udp_fd, &snap, 1000), "no snapshot");
+    REQUIRE(wait_snapshot(c, c->udp_fd, &snap, 1000), "no snapshot");
     CHECK(snap.ack == settled, "negative sequence changed ack (%d -> %d)", settled, snap.ack);
 
     /* The next in-order inputs (seq 5, 6) must be accepted. */
-    udp_send_to(c->udp_fd, "I %d %llx 5 0 0", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 5 0 0", c->slot, c->token);
     deadline = now_ms() + 2000;
     int advanced = 0;
     while (now_ms() < deadline && !advanced)
-        if (wait_snapshot(c->udp_fd, &snap, 200) && snap.ack > settled) advanced = 1;
+        if (wait_snapshot(c, c->udp_fd, &snap, 200) && snap.ack > settled) advanced = 1;
     CHECK(advanced, "inputs 5-6 were not acknowledged");
 }
 
@@ -699,20 +766,20 @@ static void test_udp_forged_packets(void) {
 
     /* Wrong token, token 0, and every slot number: none may register this socket. */
     for (int slot = -1; slot <= SERVER_MAX_PLAYERS; slot++) {
-        udp_send_to(c->udp_fd2, "H %d 0", slot);
-        udp_send_to(c->udp_fd2, "H %d deadbeefdeadbeef", slot);
-        udp_send_to(c->udp_fd2, "I %d 0 0 1 1 1", slot);
+        udp_send_to(c, c->udp_fd2, "H %d 0", slot);
+        udp_send_to(c, c->udp_fd2, "H %d deadbeefdeadbeef", slot);
+        udp_send_to(c, c->udp_fd2, "I %d 0 0 1 1 1", slot);
     }
     /* Right slot, wrong token (flip our own token). */
-    udp_send_to(c->udp_fd2, "H %d %llx", c->slot, c->token ^ 1ULL);
+    udp_send_to(c, c->udp_fd2, "H %d %llx", c->slot, c->token ^ 1ULL);
 
     sleep_ms(500);
-    CHECK(!wait_snapshot(c->udp_fd2, &snap, 500),
+    CHECK(!wait_snapshot(c, c->udp_fd2, &snap, 500),
           "forged packets registered an address and received snapshots");
 
     /* The real client must be unaffected. */
     drain_udp(c->udp_fd);
-    CHECK(wait_snapshot(c->udp_fd, &snap, 1000), "real client lost its snapshots");
+    CHECK(wait_snapshot(c, c->udp_fd, &snap, 1000), "real client lost its snapshots");
 }
 
 static void test_udp_address_rebinding(void) {
@@ -723,14 +790,14 @@ static void test_udp_address_rebinding(void) {
     /* Same player, new source port (simulates a NAT rebinding). */
     c->udp_fd2 = udp_open_fd();
     REQUIRE(c->udp_fd2 >= 0, "second UDP socket failed");
-    udp_send_to(c->udp_fd2, "H %d %llx", c->slot, c->token);
-    CHECK(wait_snapshot(c->udp_fd2, &snap, 2000),
+    udp_send_to(c, c->udp_fd2, "H %d %llx", c->slot, c->token);
+    CHECK(wait_snapshot(c, c->udp_fd2, &snap, 2000),
           "snapshots did not follow the new source address");
 
     /* Old address should go quiet. */
     sleep_ms(100);
     drain_udp(c->udp_fd);
-    CHECK(!wait_snapshot(c->udp_fd, &snap, 400),
+    CHECK(!wait_snapshot(c, c->udp_fd, &snap, 400),
           "old address still receives snapshots after rebinding");
 }
 
@@ -749,14 +816,14 @@ static void test_udp_garbage_survives(void) {
     send(c->udp_fd, "I", 1, 0);
     send(c->udp_fd, big, sizeof big, 0);
     send(c->udp_fd, binary, sizeof binary, 0);
-    udp_send_to(c->udp_fd, "I 999 1 0");
-    udp_send_to(c->udp_fd, "I -1 5 0");
-    udp_send_to(c->udp_fd, "I %d zzz 0", c->slot);
-    udp_send_to(c->udp_fd, "I %d %llx", c->slot, c->token);
-    udp_send_to(c->udp_fd, "I %d %llx 99999999999999999999 1", c->slot, c->token);
-    udp_send_to(c->udp_fd, "I %d %llx 4294967296 1", c->slot, c->token);
-    udp_send_to(c->udp_fd, "I %d %llx 0 1 2 3 abc 4", c->slot, c->token);
-    udp_send_to(c->udp_fd, "I %d %llx 0 99999999999999999999 1", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I 999 1 0");
+    udp_send_to(c, c->udp_fd, "I -1 5 0");
+    udp_send_to(c, c->udp_fd, "I %d zzz 0", c->slot);
+    udp_send_to(c, c->udp_fd, "I %d %llx", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 99999999999999999999 1", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 4294967296 1", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 0 1 2 3 abc 4", c->slot, c->token);
+    udp_send_to(c, c->udp_fd, "I %d %llx 0 99999999999999999999 1", c->slot, c->token);
 
     /* A packet with far more than UDP_MAX_INPUTS (32) values. */
     char many[SERVER_UDP_PKT_MAX];
@@ -767,11 +834,11 @@ static void test_udp_garbage_survives(void) {
 
     /* A flood larger than the 256-packet-per-call limit. */
     for (int i = 0; i < 1000; i++)
-        udp_send_to(c->udp_fd, "H %d %llx", c->slot, c->token);
+        udp_send_to(c, c->udp_fd, "H %d %llx", c->slot, c->token);
 
     sleep_ms(300);
     drain_udp(c->udp_fd);
-    CHECK(wait_snapshot(c->udp_fd, &snap, 2000), "server stopped sending snapshots");
+    CHECK(wait_snapshot(c, c->udp_fd, &snap, 2000), "server stopped sending snapshots");
 
     char line[TCP_LINE_BUFFER];
     CHECK(read_line(c, line, sizeof line, 0) != -1, "TCP connection was dropped");
@@ -799,6 +866,11 @@ static void test_udp_timeout_drops_player(void) {
           "dropped after %lld ms, expected about %d ms", elapsed, SERVER_UDP_TIMEOUT_MS);
 }
 
+static void test_session_password(void) {
+    Client *c = new_client();
+    REQUIRE(handshake(c), "passworded handshake failed");
+}
+
 static void test_udp_keepalive_prevents_timeout(void) {
     Client *c = new_client();
     Snapshot snap;
@@ -808,7 +880,7 @@ static void test_udp_keepalive_prevents_timeout(void) {
     /* Keep sending "H" for longer than the timeout. */
     long long end = now_ms() + SERVER_UDP_TIMEOUT_MS + 3000;
     while (now_ms() < end) {
-        udp_send_to(c->udp_fd, "H %d %llx", c->slot, c->token);
+        udp_send_to(c, c->udp_fd, "H %d %llx", c->slot, c->token);
         sleep_ms(500);
         drain_udp(c->udp_fd);
     }
@@ -823,28 +895,30 @@ typedef struct {
     const char *name;
     void (*fn)(void);
     int slow;
+    const char *server_key; /* optional -k for spawned server and test client */
 } TestCase;
 
 static const TestCase tests[] = {
-    {"handshake_format", test_handshake_format, 0},
-    {"unique_slots_and_tokens", test_unique_slots_and_tokens, 0},
-    {"lobby_initial_state", test_lobby_initial_state, 0},
-    {"character_select", test_character_select, 0},
-    {"ready_toggle_and_lock", test_ready_toggle_and_lock, 0},
-    {"line_framing", test_line_framing, 0},
-    {"overlong_line_disconnects", test_overlong_line_disconnects, 0},
-    {"bots_add_remove", test_bots_add_remove, 0},
-    {"bots_capacity", test_bots_capacity, 0},
-    {"disconnect_frees_slot", test_disconnect_frees_slot, 0},
-    {"abrupt_resets_survive", test_abrupt_resets_survive, 0},
-    {"server_full", test_server_full, 0},
-    {"match_starts_with_bot", test_match_starts_with_bot, 0},
-    {"udp_input_ack", test_udp_input_ack, 0},
-    {"udp_forged_packets", test_udp_forged_packets, 0},
-    {"udp_address_rebinding", test_udp_address_rebinding, 0},
-    {"udp_garbage_survives", test_udp_garbage_survives, 0},
-    {"udp_timeout_drops_player", test_udp_timeout_drops_player, 1},
-    {"udp_keepalive_prevents_timeout", test_udp_keepalive_prevents_timeout, 1},
+    {"handshake_format", test_handshake_format, 0, NULL},
+    {"unique_slots_and_tokens", test_unique_slots_and_tokens, 0, NULL},
+    {"lobby_initial_state", test_lobby_initial_state, 0, NULL},
+    {"character_select", test_character_select, 0, NULL},
+    {"ready_toggle_and_lock", test_ready_toggle_and_lock, 0, NULL},
+    {"line_framing", test_line_framing, 0, NULL},
+    {"overlong_line_disconnects", test_overlong_line_disconnects, 0, NULL},
+    {"bots_add_remove", test_bots_add_remove, 0, NULL},
+    {"bots_capacity", test_bots_capacity, 0, NULL},
+    {"disconnect_frees_slot", test_disconnect_frees_slot, 0, NULL},
+    {"abrupt_resets_survive", test_abrupt_resets_survive, 0, NULL},
+    {"server_full", test_server_full, 0, NULL},
+    {"session_password", test_session_password, 0, "ci-test-key"},
+    {"match_starts_with_bot", test_match_starts_with_bot, 0, NULL},
+    {"udp_input_ack", test_udp_input_ack, 0, NULL},
+    {"udp_forged_packets", test_udp_forged_packets, 0, NULL},
+    {"udp_address_rebinding", test_udp_address_rebinding, 0, NULL},
+    {"udp_garbage_survives", test_udp_garbage_survives, 0, NULL},
+    {"udp_timeout_drops_player", test_udp_timeout_drops_player, 1, NULL},
+    {"udp_keepalive_prevents_timeout", test_udp_keepalive_prevents_timeout, 1, NULL},
 };
 #define TEST_COUNT ((int)(sizeof tests / sizeof tests[0]))
 
@@ -859,19 +933,14 @@ static int start_server(void) {
                 dup2(null_fd, STDERR_FILENO);
             }
         }
-        execl(server_path, server_path, (char *)NULL);
+        if (spawn_server_key)
+            execl(server_path, server_path, "-k", spawn_server_key, (char *)NULL);
+        else
+            execl(server_path, server_path, (char *)NULL);
         _exit(127);
     }
-    for (int i = 0; i < 60; i++) {
-        int fd = tcp_connect_fd();
-        if (fd >= 0) {
-            close(fd);
-            sleep_ms(150);
-            return 1;
-        }
-        sleep_ms(50);
-    }
-    return 0;
+    sleep_ms(300);
+    return 1;
 }
 
 static void stop_server(void) {
@@ -901,6 +970,10 @@ static void usage(const char *prog) {
 int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     setvbuf(stdout, NULL, _IONBF, 0);
+    if (crypto_session_init() != 0) {
+        fprintf(stderr, "libsodium init failed\n");
+        return 2;
+    }
 
     char *selected[64];
     int selected_count = 0;
@@ -924,9 +997,16 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        spawn_server_key = tc->server_key;
+        if (tc->server_key)
+            crypto_session_set_password(tc->server_key);
+
         if (server_path && !start_server()) {
             printf("ERROR %s: could not start server '%s'\n", tc->name, server_path);
             stop_server();
+            spawn_server_key = NULL;
+            if (tc->server_key)
+                crypto_session_set_password(NULL);
             failed++;
             continue;
         }
@@ -936,6 +1016,9 @@ int main(int argc, char **argv) {
         tc->fn();
         release_all_clients();
         stop_server();
+        spawn_server_key = NULL;
+        if (tc->server_key)
+            crypto_session_set_password(NULL);
 
         if (fail_count == failures_before) {
             printf("PASS  %s\n", tc->name);

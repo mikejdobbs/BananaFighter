@@ -19,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "ai.h"
+#include "crypto_session.h"
 
 /*
  * Transport split
@@ -58,9 +59,12 @@ typedef struct {
     int cmd;                /* motion command (CMD_QCF/CMD_HCF) the bot "performs" with its button */
     unsigned rng;           /* this bot's own random-number state, so bots don't act in lockstep */
 
-    /* Humans: partial-line buffer for the TCP stream (unused for bots). */
-    char buf[64];           /* received bytes not yet forming a complete "\n"-terminated line */
+    /* Humans: partial-line buffer for cleartext K handshake and decrypted lines. */
+    char buf[96];           /* cleartext K line (longer than lobby lines) and scratch */
     int len;                /* how many bytes of buf are in use */
+
+    CryptoSession crypto;   /* session keys after K exchange */
+    int crypto_ready;       /* 1 once handshake completes */
 
     /* Humans: UDP gameplay channel. */
     unsigned long long token;       /* secret issued over TCP; must appear in every UDP packet */
@@ -145,5 +149,8 @@ void read_client_in_lobby(int i);
 void read_udp(void);
 void check_udp_timeouts(void);
 void accept_client_to_lobby(int listen_fd);
+
+/* Optional lobby password; NULL if unset. Set before accepting clients. */
+void server_set_session_password(const char *password);
 
 #endif

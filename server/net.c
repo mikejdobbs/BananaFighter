@@ -1,6 +1,74 @@
 #include <stdint.h>
 #include "server.h"
 
+void server_set_session_password(const char *password)
+{
+    crypto_session_set_password(password);
+}
+
+static int tcp_send_line_enc(int fd, CryptoSession *cs, const char *line, int n)
+{
+    if (crypto_session_tcp_send(fd, cs, line, (size_t)n) != 0)
+        return -1;
+    return 0;
+}
+
+static void handle_line_in_lobby(int player_num, char *line);
+
+static int lobby_line_cb(void *ctx, char *line)
+{
+    int i = *(int *)ctx;
+    handle_line_in_lobby(i, line);
+    return 0;
+}
+
+static void finish_client_crypto(int i, const char *k_line)
+{
+    Player *player = &players[i];
+    if (crypto_session_finish_handshake(&player->crypto, k_line) != 0) {
+        drop(i);
+        return;
+    }
+    player->crypto_ready = 1;
+    player->len = 0;
+
+    char message_buffer[256];
+    int message_length =
+        snprintf(message_buffer, sizeof message_buffer, "Y %d", i);
+    for (int character_index = 0; character_index < NCHARS; character_index++)
+        message_length += snprintf(message_buffer + message_length,
+                                   sizeof message_buffer - message_length,
+                                   " %s", chars[character_index].name);
+    message_buffer[message_length++] = '\n';
+    if (tcp_send_line_enc(player->fd, &player->crypto, message_buffer,
+                          message_length) != 0) {
+        drop(i);
+        return;
+    }
+
+    message_length = snprintf(message_buffer, sizeof message_buffer, "A");
+    for (int ai_index = 0; ai_index < NAIS; ai_index++)
+        message_length += snprintf(message_buffer + message_length,
+                                   sizeof message_buffer - message_length,
+                                   " %s", ais[ai_index].name);
+    message_buffer[message_length++] = '\n';
+    if (tcp_send_line_enc(player->fd, &player->crypto, message_buffer,
+                          message_length) != 0) {
+        drop(i);
+        return;
+    }
+
+    message_length = snprintf(message_buffer, sizeof message_buffer, "U %llx\n",
+                              player->token);
+    if (tcp_send_line_enc(player->fd, &player->crypto, message_buffer,
+                          message_length) != 0) {
+        drop(i);
+        return;
+    }
+
+    fprintf(stderr, "slot %d connected\n", i);
+}
+
 /* Select screen (TCP): "L {U slot char ready bot}..."   (bot = 0 for humans,
    else AI index + 1) Match (UDP): "S tick winner ack {P slot ch x y hp lives
    meter face state invis}... Q vx vy frame stun grace invis_ticks hit fuel {J
@@ -89,11 +157,17 @@ void send_state(int v) {
     buf[n++] = '\n';
 
     if (srv_phase == LOBBY) { /* reliable: TCP */
-        ssize_t r = send(players[v].fd, buf, n, 0);
-        if (r != n && !(r < 0 && errno == EAGAIN))
-            drop(v);                /* error or partial write */
+        if (!players[v].crypto_ready ||
+            tcp_send_line_enc(players[v].fd, &players[v].crypto, buf, n) != 0)
+            drop(v);
     } else if (players[v].udp_ok) { /* lossy is fine: UDP */
-        sendto(udp_fd, buf, n, 0, (struct sockaddr *)&players[v].udp_addr,
+        unsigned char wire[UDP_PKT_MAX + 64];
+        size_t wire_len;
+        if (crypto_session_udp_seal(&players[v].crypto, wire, sizeof wire, buf,
+                                    (size_t)n, &wire_len) != 0)
+            return;
+        sendto(udp_fd, wire, wire_len, 0,
+               (struct sockaddr *)&players[v].udp_addr,
                sizeof players[v].udp_addr);
     }
 }
@@ -156,8 +230,8 @@ static void handle_line_in_lobby(int player_num, char *line) {
 
 void read_client_in_lobby(int i) {
     Player *player = &players[i];
-    ssize_t n = recv(player->fd, player->buf + player->len,
-                     sizeof player->buf - player->len - 1, 0);
+    unsigned char chunk[CRYPTO_SESSION_TCP_IO_MAX];
+    ssize_t n = recv(player->fd, chunk, sizeof chunk, 0);
 
     if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
         drop(i);
@@ -167,17 +241,28 @@ void read_client_in_lobby(int i) {
     if (n < 0)
         return;
 
-    player->len += n;
-    char *newline;
-    while ((newline = memchr(player->buf, '\n', player->len))) {
+    if (!player->crypto_ready) {
+        if (player->len + n >= (int)sizeof player->buf)
+            drop(i);
+        memcpy(player->buf + player->len, chunk, (size_t)n);
+        player->len += (int)n;
+        char *newline = memchr(player->buf, '\n', (size_t)player->len);
+        if (!newline)
+            return;
         *newline = 0;
-        handle_line_in_lobby(i, player->buf);
-        int used = (int)(newline - player->buf) + 1;
-        memmove(player->buf, player->buf + used, player->len - used);
-        player->len -= used;
+        finish_client_crypto(i, player->buf);
+        return;
     }
-    if (player->len >= (int)sizeof player->buf - 1)
-        drop(i); /* line too long */
+
+    if (crypto_session_tcp_feed(&player->crypto, chunk, (size_t)n,
+                                lobby_line_cb, &i) != 0) {
+        drop(i);
+        return;
+    }
+    if (player->crypto.plain_len >= 63 &&
+        !memchr((char *)player->crypto.plain_accum, '\n',
+                (size_t)player->crypto.plain_len))
+        drop(i);
 }
 
 /*
@@ -194,25 +279,41 @@ void read_udp(void) {
     for (int packets_processed = 0;
          packets_processed < MAX_UDP_PACKETS_PER_CALL; packets_processed++) {
 
-        /* Receive one packet; the extra byte leaves room for a terminator. */
+        unsigned char wire[UDP_PKT_MAX + 64];
         char packet[UDP_PKT_MAX + 1];
         struct sockaddr_in sender_addr;
         socklen_t sender_addr_len = sizeof sender_addr;
 
         ssize_t bytes_received =
-            recvfrom(udp_fd, packet, UDP_PKT_MAX, 0,
+            recvfrom(udp_fd, wire, sizeof wire, 0,
                      (struct sockaddr *)&sender_addr, &sender_addr_len);
 
         /* Stop when no packet is available (normally EAGAIN: drained). */
         if (bytes_received < 0)
             return;
 
-        /* Make the packet a C string so sscanf/strto* can parse it. */
-        packet[bytes_received] = '\0';
+        /* Decrypt against each live human until one opens (slot in plaintext). */
+        int player_slot = -1;
+        size_t plain_len = 0;
+        Player *player = NULL;
+
+        for (int try = 0; try < MAX_PLAYERS; try++) {
+            if (players[try].fd < 0 || !players[try].crypto_ready)
+                continue;
+            if (crypto_session_udp_open(&players[try].crypto, wire,
+                                        (size_t)bytes_received, packet,
+                                        sizeof packet, &plain_len) != 0)
+                continue;
+            player = &players[try];
+            break;
+        }
+        if (!player)
+            continue;
+
+        packet[plain_len] = '\0';
 
         /* Parse the header: type, player slot, and hexadecimal token. */
         char packet_type;
-        int player_slot;
         unsigned long long packet_token;
         int header_length = 0;
 
@@ -224,9 +325,7 @@ void read_udp(void) {
         if (player_slot < 0 || player_slot >= MAX_PLAYERS)
             continue;
 
-        /* Reject packets for unused slots or with a wrong token. */
-        Player *player = &players[player_slot];
-        if (player->fd < 0 || player->token == 0 ||
+        if (player != &players[player_slot] || player->token == 0 ||
             packet_token != player->token)
             continue; /* unknown or forged */
 
@@ -317,58 +416,28 @@ void accept_client_to_lobby(int listen_fd) {
     }
 
     /* Setup player struct */
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+    int fd_flags = fcntl(fd, F_GETFL);
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     memset(&players[slot], 0, sizeof players[slot]);
     players[slot].fd = fd;
     players[slot].body.move = -1;
     players[slot].token = make_token();
+    players[slot].crypto_ready = 0;
+    crypto_session_begin(&players[slot].crypto);
 
-    /* Reuse this buffer to construct each outgoing protocol message. */
-    char message_buffer[256];
-
-    /*
-     * Send the assigned player slot and available character names:
-     * "Y slot name0 name1 ...\n"
-     */
+    char message_buffer[128];
     int message_length =
-        snprintf(message_buffer, sizeof message_buffer, "Y %d", slot);
-
-    /* Append each character name to the message. */
-    for (int character_index = 0; character_index < NCHARS; character_index++) {
-        message_length += snprintf(message_buffer + message_length,
-                                   sizeof message_buffer - message_length,
-                                   " %s", chars[character_index].name);
+        crypto_session_format_k_line(message_buffer, sizeof message_buffer,
+                                   &players[slot].crypto);
+    if (message_length < 0) {
+        drop(slot);
+        return;
     }
-
-    /* Append the line terminator and send the completed message. */
-    message_buffer[message_length++] = '\n';
-    send(fd, message_buffer, message_length, 0);
-
-    /*
-     * Send the available AI names:
-     * "A ai0 ai1 ...\n"
-     */
-    message_length = snprintf(message_buffer, sizeof message_buffer, "A");
-
-    for (int ai_index = 0; ai_index < NAIS; ai_index++) {
-        message_length += snprintf(message_buffer + message_length,
-                                   sizeof message_buffer - message_length,
-                                   " %s", ais[ai_index].name);
+    fcntl(fd, F_SETFL, fd_flags & ~O_NONBLOCK);
+    ssize_t sent = send(fd, message_buffer, (size_t)message_length, 0);
+    fcntl(fd, F_SETFL, fd_flags | O_NONBLOCK);
+    if (sent != message_length) {
+        drop(slot);
+        return;
     }
-
-    message_buffer[message_length++] = '\n';
-    send(fd, message_buffer, message_length, 0);
-
-    /*
-     * Send the token the client must include in its UDP packets:
-     * "U token\n"
-     */
-    message_length = snprintf(message_buffer, sizeof message_buffer, "U %llx\n",
-                              players[slot].token);
-
-    send(fd, message_buffer, message_length, 0);
-
-    /* Record the successful connection in the server log. */
-    fprintf(stderr, "slot %d connected\n", slot);
 }

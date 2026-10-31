@@ -12,11 +12,14 @@ endif()
 set(WARNINGS -Wall -Wextra)
 
 find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
 
 # Headers shared by the client and server (sim.h is used by both; listed so they show up in Xcode)
 set(SHARED_HEADERS
   sim.h
-  config.h)
+  config.h
+  crypto_session.h)
 
 set(SERVER_HEADERS
   server/server.h
@@ -25,6 +28,7 @@ set(SERVER_HEADERS
 
 # Server logic lives once here; dedicated binary and client both link it.
 add_library(fighter_server STATIC
+  crypto_session.c
   server/embed.c
   server/util.c
   server/state.c
@@ -37,7 +41,7 @@ target_include_directories(fighter_server PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/server)
 target_compile_options(fighter_server PRIVATE ${WARNINGS})
-target_link_libraries(fighter_server PUBLIC Threads::Threads)
+target_link_libraries(fighter_server PUBLIC Threads::Threads PkgConfig::SODIUM)
 
 add_executable(server server/main.c)
 target_link_libraries(server PRIVATE fighter_server)
@@ -49,8 +53,10 @@ target_compile_options(server PRIVATE ${WARNINGS})
 # ---------------------------------------------------------------------------
 enable_testing()
 
-add_executable(server_test tests/test.c)
+add_executable(server_test tests/test.c crypto_session.c)
 target_compile_options(server_test PRIVATE ${WARNINGS})
+target_link_libraries(server_test PRIVATE PkgConfig::SODIUM)
+target_include_directories(server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_dependencies(server_test server)  # the tests launch the freshly built server
 
 # Fast tests. "-s" starts a fresh server for every test case.

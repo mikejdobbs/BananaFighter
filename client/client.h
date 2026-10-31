@@ -163,7 +163,10 @@ int keymask(void);
 int pad_edge(SDL_GamepadButton b);
 
 /* network.c */
+int network_init(void);
+void network_set_session_password(const char *password);
 int dial(const char *host, const char *port);
+int network_handshake(void); /* after dial; 0 on failure */
 int pump(void); /* 0 = server closed the connection */
 void sendf(const char *fmt, ...);
 void client_tick(void);

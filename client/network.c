@@ -19,6 +19,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "crypto_session.h"
 #include "client.h"
 
 int networkSocketFd = -1;  /* TCP socket to the server */
@@ -47,6 +48,8 @@ static int hist[HIST];
 static char rb[4096];
 static int rl;
 
+static CryptoSession crypto;
+
 static int udp_fd = -1;
 static unsigned long long token;
 static long long last_hello;
@@ -56,6 +59,59 @@ static int last_tick = -1;
 static int num(char **s) { return (int)strtol(*s, s, 10); }
 static void udp_open(void);
 static void udp_hello(void);
+
+int network_init(void) { return crypto_session_init(); }
+
+void network_set_session_password(const char *password)
+{
+    crypto_session_set_password(password);
+}
+
+static int ensure_crypto_handshake(void)
+{
+    if (crypto.established)
+        return 1;
+    char k_line[128];
+    int got_k = 0;
+    for (;;) {
+        char *nlp;
+        while ((nlp = memchr(rb, '\n', (size_t)rl))) {
+            *nlp = 0;
+            if (rb[0] == 'K' && rb[1] == ' ') {
+                snprintf(k_line, sizeof k_line, "%s\n", rb);
+                got_k = 1;
+            }
+            int used = (int)(nlp - rb) + 1;
+            memmove(rb, rb + used, (size_t)(rl - used));
+            rl -= used;
+            if (got_k)
+                break;
+        }
+        if (got_k)
+            break;
+        ssize_t n = recv(networkSocketFd, rb + rl, sizeof rb - (size_t)rl - 1, 0);
+        if (n == 0)
+            return 0;
+        if (n < 0)
+            return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
+        rl += (int)n;
+    }
+
+    crypto_session_begin(&crypto);
+    char out[128];
+    int kn = crypto_session_format_k_line(out, sizeof out, &crypto);
+    if (kn < 0 || send(networkSocketFd, out, (size_t)kn, 0) != kn)
+        return 0;
+    if (crypto_session_finish_handshake(&crypto, k_line) != 0)
+        return 0;
+    return 1;
+}
+
+int network_handshake(void)
+{
+    rl = 0;
+    return ensure_crypto_handshake();
+}
 
 /* Direction to the nearest visible non-self opponent at position x: -1 left, +1 right, 0 none */
 static int look(int x)
@@ -214,7 +270,14 @@ static void udp_open(void)
 
 static void udp_send(const char *b, int n)
 {
-    if (udp_fd >= 0 && n > 0) send(udp_fd, b, n, 0);
+    if (udp_fd < 0 || n <= 0 || !crypto.established)
+        return;
+    unsigned char wire[2048];
+    size_t wire_len;
+    if (crypto_session_udp_seal(&crypto, wire, sizeof wire, b, (size_t)n,
+                                &wire_len) != 0)
+        return;
+    send(udp_fd, wire, wire_len, 0);
 }
 
 /* Send a UDP keepalive/hello (H slot token) to register our address */
@@ -229,9 +292,14 @@ static void udp_drain(void)
     /* Drain up to a small burst of UDP packets, applying only newer S snapshots */
     char pkt[2048];
     for (int iter = 0; udp_fd >= 0 && iter < 64; iter++) {
-        ssize_t n = recv(udp_fd, pkt, sizeof pkt - 1, 0);
+        unsigned char wire[2048];
+        ssize_t n = recv(udp_fd, wire, sizeof wire, 0);
         if (n < 0) return;
-        pkt[n] = 0;
+        size_t plain_len;
+        if (crypto_session_udp_open(&crypto, wire, (size_t)n, pkt, sizeof pkt - 1,
+                                    &plain_len) != 0)
+            continue;
+        pkt[plain_len] = 0;
         char *nl = strchr(pkt, '\n');
         if (nl) *nl = 0;
         if (pkt[0] != 'S') continue;
@@ -244,22 +312,25 @@ static void udp_drain(void)
 }
 
 /* Read and parse as many complete TCP lines as available; return 0 on disconnect */
+static int tcp_line_cb(void *ctx, char *line)
+{
+    (void)ctx;
+    parse(line);
+    return 0;
+}
+
 static int pump_tcp(void)
 {
+    if (!crypto.established && !ensure_crypto_handshake())
+        return 0;
+
     for (;;) {
-        ssize_t n = recv(networkSocketFd, rb + rl, sizeof rb - rl - 1, 0);
+        unsigned char chunk[CRYPTO_SESSION_TCP_IO_MAX];
+        ssize_t n = recv(networkSocketFd, chunk, sizeof chunk, 0);
         if (n == 0) return 0;
         if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
-        rl += n;
-        char *nlp;
-        while ((nlp = memchr(rb, '\n', rl))) {
-            *nlp = 0;
-            parse(rb);
-            int used = nlp - rb + 1;
-            memmove(rb, rb + used, rl - used);
-            rl -= used;
-        }
-        if (rl >= (int)sizeof rb - 1) rl = 0;
+        if (crypto_session_tcp_feed(&crypto, chunk, (size_t)n, tcp_line_cb, NULL) != 0)
+            return 0;
     }
 }
 
@@ -284,8 +355,8 @@ void sendf(const char *fmt, ...)
     va_start(ap, fmt);
     int n = vsnprintf(b, sizeof b, fmt, ap);
     va_end(ap);
-    if (n > 0)
-        send(networkSocketFd, b, (size_t)n, 0);
+    if (n > 0 && crypto.established)
+        crypto_session_tcp_send(networkSocketFd, &crypto, b, (size_t)n);
 }
 
 /* Resolve and connect a non-blocking TCP socket with TCP_NODELAY; returns fd or -1 */

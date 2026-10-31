@@ -1,15 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include "client.h"
 #include "server/embed.h"
 
 int main(int argc, char **argv)
 {
-    int hosting = argc <= 1;
-    const char *serverHost = hosting ? "127.0.0.1" : argv[1];
+    const char *session_key = getenv("BANANAFIGHTER_KEY");
+    const char *host_arg = NULL;
+    const char *port_arg = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-k") && i + 1 < argc) {
+            session_key = argv[++i];
+            continue;
+        }
+        if (!host_arg)
+            host_arg = argv[i];
+        else if (!port_arg)
+            port_arg = argv[i];
+    }
+    int hosting = !host_arg;
+    const char *serverHost = hosting ? "127.0.0.1" : host_arg;
     char serverPort[8];
-    snprintf(serverPort, sizeof serverPort, "%d", argc > 2 ? atoi(argv[2]) : PORT);
+    snprintf(serverPort, sizeof serverPort, "%d",
+             port_arg ? atoi(port_arg) : PORT);
+
+    if (network_init() != 0) {
+        fprintf(stderr, "crypto init failed\n");
+        return 1;
+    }
+    if (session_key && session_key[0])
+        network_set_session_password(session_key);
 
     if (hosting) {
         if (server_embed_start() < 0) {
@@ -20,6 +42,11 @@ int main(int argc, char **argv)
 
     if ((networkSocketFd = dial(serverHost, serverPort)) < 0) {
         fprintf(stderr, "cannot connect to %s:%s\n", serverHost, serverPort);
+        if (hosting) server_embed_stop();
+        return 1;
+    }
+    if (!network_handshake()) {
+        fprintf(stderr, "encrypted handshake failed\n");
         if (hosting) server_embed_stop();
         return 1;
     }

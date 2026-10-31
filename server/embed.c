@@ -139,6 +139,8 @@ static void *server_thread_main(void *arg)
 
 int server_run_forever(void)
 {
+    if (crypto_session_init() != 0)
+        return -1;
     if (server_bind() < 0)
         return -1;
     atomic_store(&running, 1);
@@ -151,6 +153,8 @@ int server_embed_start(void)
 {
     if (thread_alive)
         return 0;
+    if (crypto_session_init() != 0)
+        return -1;
     if (server_bind() < 0)
         return -1;
     atomic_store(&running, 1);
