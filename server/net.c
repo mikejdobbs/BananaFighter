@@ -26,6 +26,7 @@ static void finish_client_crypto(int i, const char *k_line)
 {
     Player *player = &players[i];
     if (crypto_session_finish_handshake(&player->crypto, k_line) != 0) {
+        fprintf(stderr, "slot %d: rejected client K handshake line\n", i);
         drop(i);
         return;
     }
@@ -242,15 +243,28 @@ void read_client_in_lobby(int i) {
         return;
 
     if (!player->crypto_ready) {
-        if (player->len + n >= (int)sizeof player->buf)
+        if (player->len + n >= (int)sizeof player->buf) {
             drop(i);
+            return;
+        }
         memcpy(player->buf + player->len, chunk, (size_t)n);
         player->len += (int)n;
         char *newline = memchr(player->buf, '\n', (size_t)player->len);
         if (!newline)
             return;
         *newline = 0;
+        int total = player->len;
+        int k_line_len = (int)(newline - player->buf) + 1;
         finish_client_crypto(i, player->buf);
+        if (player->fd < 0)
+            return;
+        if (k_line_len < total) {
+            int tail = total - k_line_len;
+            if (crypto_session_tcp_feed(&player->crypto, player->buf + k_line_len,
+                                        (size_t)tail, lobby_line_cb, &i) != 0)
+                drop(i);
+        }
+        player->len = 0;
         return;
     }
 

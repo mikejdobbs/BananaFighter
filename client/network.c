@@ -63,6 +63,23 @@ static void udp_hello(void);
 static int pump_tcp(void);
 static long long now_ms(void);
 
+static int tcp_send_all(int fd, const void *buf, size_t len)
+{
+    const unsigned char *p = buf;
+    while (len > 0) {
+        ssize_t r = send(fd, p, len, 0);
+        if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+            continue;
+        if (r <= 0)
+            return -1;
+        p += (size_t)r;
+        len -= (size_t)r;
+    }
+    return 0;
+}
+
+static int awaiting_lobby_banner;
+
 int network_init(void) { return crypto_session_init(); }
 
 void network_set_session_password(const char *password)
@@ -74,9 +91,27 @@ static int ensure_crypto_handshake(void)
 {
     if (crypto.established)
         return 1;
+
+    /* Cleartext K exchange over blocking I/O so the full line is sent/received
+       reliably on remote links (non-blocking send often fails with EAGAIN). */
+    int fd_flags = fcntl(networkSocketFd, F_GETFL);
+    if (fd_flags >= 0)
+        fcntl(networkSocketFd, F_SETFL, fd_flags & ~O_NONBLOCK);
+    struct timeval rcv_to = {.tv_sec = 5, .tv_usec = 0};
+    setsockopt(networkSocketFd, SOL_SOCKET, SO_RCVTIMEO, &rcv_to, sizeof rcv_to);
+
     char k_line[128];
     int got_k = 0;
+    int ok = 0;
+    long long deadline = now_ms() + 5000;
+
     for (;;) {
+        if (now_ms() >= deadline) {
+            fprintf(stderr,
+                    "timed out waiting for server K handshake line (wrong port, "
+                    "firewall, or outdated server binary?)\n");
+            break;
+        }
         char *nlp;
         while ((nlp = memchr(rb, '\n', (size_t)rl))) {
             *nlp = 0;
@@ -93,44 +128,71 @@ static int ensure_crypto_handshake(void)
         if (got_k)
             break;
         ssize_t n = recv(networkSocketFd, rb + rl, sizeof rb - (size_t)rl - 1, 0);
-        if (n == 0)
-            return 0;
+        if (n == 0) {
+            fprintf(stderr, "server closed connection during K handshake\n");
+            break;
+        }
         if (n < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+            if (errno == EINTR)
                 continue;
-            return 0;
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            perror("recv during K handshake");
+            break;
         }
         rl += (int)n;
     }
 
-    crypto_session_begin(&crypto);
-    char out[128];
-    int kn = crypto_session_format_k_line(out, sizeof out, &crypto);
-    if (kn < 0 || send(networkSocketFd, out, (size_t)kn, 0) != kn)
-        return 0;
-    if (crypto_session_finish_handshake(&crypto, k_line) != 0)
-        return 0;
-    return 1;
+    if (got_k) {
+        crypto_session_begin(&crypto);
+        char out[128];
+        int kn = crypto_session_format_k_line(out, sizeof out, &crypto);
+        if (kn < 0 || tcp_send_all(networkSocketFd, out, (size_t)kn) != 0)
+            fprintf(stderr, "could not send client K handshake line\n");
+        else if (crypto_session_finish_handshake(&crypto, k_line) != 0)
+            fprintf(stderr, "invalid server K handshake line\n");
+        else
+            ok = 1;
+    }
+
+    rcv_to.tv_sec = 0;
+    rcv_to.tv_usec = 0;
+    setsockopt(networkSocketFd, SOL_SOCKET, SO_RCVTIMEO, &rcv_to, sizeof rcv_to);
+    if (fd_flags >= 0)
+        fcntl(networkSocketFd, F_SETFL, fd_flags | O_NONBLOCK);
+    return ok;
 }
 
 int network_handshake(void)
 {
     rl = 0;
-    if (!ensure_crypto_handshake())
+    awaiting_lobby_banner = 1;
+    if (!ensure_crypto_handshake()) {
+        awaiting_lobby_banner = 0;
         return 0;
+    }
 
     /* Server sends Y/A/U encrypted right after our K line; read them before SDL init. */
     long long deadline = now_ms() + 5000;
     while (me < 0 || !token) {
-        if (now_ms() >= deadline)
+        if (now_ms() >= deadline) {
+            fprintf(stderr,
+                    "timed out waiting for encrypted lobby banner (Y/U lines)\n");
+            awaiting_lobby_banner = 0;
             return 0;
-        if (!pump_tcp())
+        }
+        if (!pump_tcp()) {
+            awaiting_lobby_banner = 0;
             return 0;
-        if (me >= 0 && token)
+        }
+        if (me >= 0 && token) {
+            awaiting_lobby_banner = 0;
             return 1;
+        }
         struct pollfd pfd = {networkSocketFd, POLLIN, 0};
         poll(&pfd, 1, 50);
     }
+    awaiting_lobby_banner = 0;
     return 1;
 }
 
@@ -350,8 +412,13 @@ static int pump_tcp(void)
         ssize_t n = recv(networkSocketFd, chunk, sizeof chunk, 0);
         if (n == 0) return 0;
         if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
-        if (crypto_session_tcp_feed(&crypto, chunk, (size_t)n, tcp_line_cb, NULL) != 0)
+        if (crypto_session_tcp_feed(&crypto, chunk, (size_t)n, tcp_line_cb, NULL) != 0) {
+            if (awaiting_lobby_banner)
+                fprintf(stderr,
+                        "could not decrypt server lobby data — use the same "
+                        "BANANAFIGHTER_KEY or -k on client and server\n");
             return 0;
+        }
     }
 }
 
