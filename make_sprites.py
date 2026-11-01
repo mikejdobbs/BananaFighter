@@ -26,8 +26,8 @@ Fighter sheet: 8 columns of 192x192 cells, 30 rows
 shots.bmp: one 48x48 cell per character (config.h order). JV shot cell is preserved on misc regen.
 fx.bmp: four 96x96 cells (bomb, three explosion frames).  background.bmp: the 1280x580 stage.
 
-Manual assets (not generated here): sprites/jv.bmp and the JV cell in shots.bmp — build with
-tools/build_jv_sprites.py.
+Manual assets (not generated here): sprites/jv.bmp, sprites/rump.bmp, and their shots cells —
+build with tools/build_jv_sprites.py and tools/build_rump_sprites.py.
 """
 
 import math, os, random, struct, sys
@@ -55,7 +55,7 @@ CHAR_ORDER = (
     "flusk",
     "spitsger",
 )
-MANUAL_SPRITES = frozenset({"jv"})
+MANUAL_SPRITES = frozenset({"jv", "rump"})
 
 # Procedurally generated fighter sheets (excludes manual assets in MANUAL_SPRITES).
 CHARS = {
@@ -224,33 +224,6 @@ CHARS = {
             "air_kick",
         ],
         canims=["c_claw", "c_claw", "c_hp", "c_lk", "c_mk", "c_hk"],
-    ),
-    "rump": dict(
-        skin=(238, 156, 96),
-        top=(25, 35, 85),
-        arm_col=(25, 35, 85),
-        pants=(25, 35, 85),
-        shoe=(20, 20, 25),
-        torso_w=12,
-        arm_w=6,
-        leg_w=7,
-        head_r=8,
-        torso=18,
-        arm=17,
-        leg=22,
-        anims=[
-            "jab",
-            "strike",
-            "hook",
-            "low_kick",
-            "kick",
-            "high_kick",
-            "hairtoss",
-            "uppercut",
-            "summon",
-            "air_punch",
-            "air_kick",
-        ],
     ),
     "kammy": dict(
         skin=(235, 190, 150),
@@ -1376,7 +1349,7 @@ def shots():
     if os.path.isfile(shots_path):
         prev = Image.open(shots_path).convert("RGBA")
     for i, name in enumerate(CHAR_ORDER):
-        if name == "jv":
+        if name in MANUAL_SPRITES:
             if prev is not None and prev.size[0] >= (i + 1) * 48:
                 img.paste(prev.crop((i * 48, 0, (i + 1) * 48, 48)), (i * 48, 0))
             continue
@@ -1406,8 +1379,6 @@ def shots():
             cv.rectangle([13, 6, 15, 10], fill=(255, 255, 255))
         elif name == "squirrel":
             acorn(cv, (8, 8), 1.6)
-        elif name == "rump":  # flying toupee
-            toupee(cv, (8, 8), 1.1)
         elif name == "kammy":
             cv.rectangle([4, 4, 12, 12], fill=(180, 30, 35))
             cv.line([(5, 6), (11, 10)], fill=(240, 240, 240), width=1)
@@ -1740,7 +1711,7 @@ def background(W=1280, H=580, ss=2):
 def main(args):
     os.makedirs(OUT, exist_ok=True)
     for t in args or list(CHARS) + ["misc", "bg"]:
-        if t in CHARS:
+        if t in CHARS and t not in MANUAL_SPRITES:
             save_argb(sheet(t), os.path.join(OUT, t + ".bmp"))
         elif t == "misc":
             save_argb(shots(), os.path.join(OUT, "shots.bmp"))
