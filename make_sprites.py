@@ -23,8 +23,11 @@ Fighter sheet: 8 columns of 192x192 cells, 30 rows
 29 ship (2): called-ship frames; Rump gets an airforce plane, others a mothership UFO
 'anims' below names the pose kind drawn for rows 7..17. 'canims' (rows 19..24) and 'xanims'
 (rows 25..28) are optional per-character lists; CANIMS / XANIMS are the defaults.
-shots.bmp: one 48x48 cell per character (config.h order).
+shots.bmp: one 48x48 cell per character (config.h order). JV shot cell is preserved on misc regen.
 fx.bmp: four 96x96 cells (bomb, three explosion frames).  background.bmp: the 1280x580 stage.
+
+Manual assets (not generated here): sprites/jv.bmp and the JV cell in shots.bmp — build with
+tools/build_jv_sprites.py.
 """
 
 import math, os, random, struct, sys
@@ -37,7 +40,24 @@ CX = 26  # figure centre inside a cell: leaves room for reach on the facing side
 OUTLINE = (22, 20, 34)
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprites")
 
-# One entry per character, in the same order as config.h; the file name is the lower-case name.
+# config.h order (lower-case); includes jv for shots.bmp layout only.
+CHAR_ORDER = (
+    "ken",
+    "tank",
+    "ninja",
+    "monkey",
+    "alien",
+    "squirrel",
+    "rump",
+    "jv",
+    "kammy",
+    "megadami",
+    "flusk",
+    "spitsger",
+)
+MANUAL_SPRITES = frozenset({"jv"})
+
+# Procedurally generated fighter sheets (excludes manual assets in MANUAL_SPRITES).
 CHARS = {
     "ken": dict(
         skin=(235, 190, 150),
@@ -226,33 +246,6 @@ CHARS = {
             "kick",
             "high_kick",
             "hairtoss",
-            "uppercut",
-            "summon",
-            "air_punch",
-            "air_kick",
-        ],
-    ),
-    "jv": dict(
-        skin=(235, 195, 158),
-        top=(28, 48, 98),
-        arm_col=(28, 48, 98),
-        pants=(42, 46, 58),
-        shoe=(35, 38, 48),
-        torso_w=19,
-        arm_w=8,
-        leg_w=10,
-        head_r=7,
-        torso=15,
-        arm=16,
-        leg=19,
-        anims=[
-            "jab",
-            "strike",
-            "hook",
-            "low_kick",
-            "kick",
-            "high_kick",
-            "bone",
             "uppercut",
             "summon",
             "air_punch",
@@ -1025,10 +1018,6 @@ def body_deco(cv, name, hip, sh, tw):
         cv.line([sh, (sh[0] + 3, sh[1] + 4)], fill=(245, 245, 245), width=3)
         cv.line([along(0.9, 2), along(0.1, 3)], fill=(200, 30, 40), width=3)
         cv.ellipse(ring(along(0.75, -3), 1), fill=(255, 215, 60))
-    elif name == "jv":
-        cv.line([(sh[0] - 4, sh[1] + 1), (sh[0] + 3, sh[1] + 9)], fill=(248, 248, 252), width=2.5)
-        cv.line([(sh[0] + 1, sh[1] + 2), (sh[0] + 1, sh[1] + 11)], fill=(185, 32, 38), width=2)
-        cv.polygon([(sh[0], sh[1] + 4), (sh[0] + 3, sh[1] + 6), (sh[0], sh[1] + 8)], fill=(185, 32, 38))
     elif name == "kammy":
         cv.rectangle([mid[0] - tw / 2, mid[1] - 4, mid[0] + tw / 2, mid[1] + 4], fill=(200, 30, 35))
     elif name == "megadami":
@@ -1130,14 +1119,6 @@ def head(cv, name, h, r, skin, bald=False):
             )
             cv.line([(hx + 1, hy - 1), (hx + 5, hy - 2)], fill=(200, 140, 60), width=1)
             cv.ellipse(ring((hx + r - 1, hy + 4), 1.3), fill=(150, 55, 50))
-    elif name == "jv":
-        HAIR = (92, 58, 36)
-        cv.pieslice(ring(h, r + 0.4), 155, 385, fill=HAIR)
-        cv.line([(hx - r + 2, hy - r + 2), (hx + r - 3, hy - r + 4)], fill=HAIR, width=1.5)
-        cv.ellipse([hx - 3, hy + 1, hx + r + 3, hy + r + 6], fill=shade_c(skin, 0.94))
-        cv.pieslice(ring((hx + 1, hy + 4), r * 0.9), 195, 345, fill=(105, 82, 68))
-        cv.line([(hx - r + 3, hy + 1), (hx + 1, hy + 5)], fill=(105, 82, 68), width=1.3)
-        cv.line([(hx + 1, hy + 5), (hx + r - 1, hy + 3)], fill=(105, 82, 68), width=1.0)
     elif name == "kammy":
         cv.pieslice(ring(h, r), 180, 360, fill=(120, 25, 30))
         cv.rectangle([hx + 1, hy - 1, hx + 3, hy], fill=(20, 20, 25))
@@ -1150,7 +1131,7 @@ def head(cv, name, h, r, skin, bald=False):
     elif name == "spitsger":
         cv.pieslice(ring(h, r), 180, 360, fill=(25, 25, 30))
         cv.rectangle([hx - 2, hy - 3, hx + 5, hy - 1], fill=(20, 20, 25))
-    if name in ("jv", "kammy", "megadami", "flusk", "spitsger"):
+    if name in ("kammy", "megadami", "flusk", "spitsger"):
         cv.rectangle([hx + 2, hy - 1, hx + 3, hy], fill=(20, 20, 25))
 
 
@@ -1343,16 +1324,6 @@ def draw_fig(cv, name, p):
     for q in (hip, sh):
         cv.ellipse(ring(q, tw / 2), fill=c["top"])
     body_deco(cv, name, hip, sh, tw)
-    if name == "jv":
-        mid = ((hip[0] + sh[0]) / 2, (hip[1] + sh[1]) / 2)
-        cv.ellipse(
-            [mid[0] - tw * 0.75, mid[1] - 1, mid[0] + tw * 0.9, mid[1] + 12],
-            fill=shade_c(c["top"], 0.88),
-        )
-        cv.ellipse(
-            [mid[0] - tw * 0.55, mid[1] + 1, mid[0] + tw * 0.7, mid[1] + 10],
-            fill=shade_c(c["top"], 0.95),
-        )
 
     ff = limb(cv, (hip[0] + 1, hip[1]), lf, c["leg"], lw, c["pants"])
     foot(cv, ff, c["shoe"])
@@ -1399,8 +1370,18 @@ def sheet(name):
 
 
 def shots():
-    img = Image.new("RGBA", (48 * len(CHARS), 48), (0, 0, 0, 0))
-    for i, name in enumerate(CHARS):
+    img = Image.new("RGBA", (48 * len(CHAR_ORDER), 48), (0, 0, 0, 0))
+    prev = None
+    shots_path = os.path.join(OUT, "shots.bmp")
+    if os.path.isfile(shots_path):
+        prev = Image.open(shots_path).convert("RGBA")
+    for i, name in enumerate(CHAR_ORDER):
+        if name == "jv":
+            if prev is not None and prev.size[0] >= (i + 1) * 48:
+                img.paste(prev.crop((i * 48, 0, (i + 1) * 48, 48)), (i * 48, 0))
+            continue
+        if name not in CHARS:
+            continue
         cv = Cv(16, 16, K)
         c = (8, 8)
         if name == "ken":
@@ -1427,10 +1408,6 @@ def shots():
             acorn(cv, (8, 8), 1.6)
         elif name == "rump":  # flying toupee
             toupee(cv, (8, 8), 1.1)
-        elif name == "jv":
-            cv.line([(2, 8), (14, 8)], fill=(240, 230, 210), width=2)
-            cv.ellipse(ring((3, 8), 1.2), fill=(240, 230, 210))
-            cv.ellipse(ring((13, 8), 1.2), fill=(240, 230, 210))
         elif name == "kammy":
             cv.rectangle([4, 4, 12, 12], fill=(180, 30, 35))
             cv.line([(5, 6), (11, 10)], fill=(240, 240, 240), width=1)
@@ -1510,21 +1487,6 @@ def draw_plane(cv, f):
     cv.ellipse([2, 31, 6, 34], fill=(255, 250, 200) if f % 2 == 0 else (255, 180, 100))
 
 
-def draw_truck(cv, f):
-    """Hillbilly pickup tossing bombs from the bed."""
-    rust, dark = (160, 85, 45), (90, 50, 30)
-    cv.rectangle([8, 32, 52, 44], fill=rust)
-    cv.rectangle([8, 28, 22, 36], fill=(120, 170, 210))
-    cv.rectangle([22, 30, 52, 44], fill=(130, 70, 38))
-    cv.ellipse([10, 40, 18, 48], fill=(30, 30, 35))
-    cv.ellipse([42, 40, 50, 48], fill=(30, 30, 35))
-    cv.rectangle([52, 33, 58, 40], fill=dark)
-    for i, x in enumerate((28, 36, 44)):
-        cv.ellipse(ring((x, 30), 2.5), fill=(45, 48, 55))
-        if (i + f) % 2:
-            cv.line([(x, 28), (x, 22)], fill=(255, 200, 80), width=1)
-
-
 def draw_old_plane(cv, f):
     """Vintage bomber with twin wings."""
     cv.ellipse([18, 28, 46, 38], fill=(140, 120, 90))
@@ -1577,7 +1539,6 @@ def ship_cell(name, f):
     cv = Cv(64, 64, K)
     ship_draw = {
         "rump": draw_plane,
-        "jv": draw_truck,
         "megadami": draw_old_plane,
         "flusk": draw_flying_car,
         "spitsger": draw_van,
