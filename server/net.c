@@ -158,8 +158,9 @@ void send_state(int v) {
     buf[n++] = '\n';
 
     if (srv_phase == LOBBY) { /* reliable: TCP */
-        if (!players[v].crypto_ready ||
-            tcp_send_line_enc(players[v].fd, &players[v].crypto, buf, n) != 0)
+        if (!players[v].crypto_ready)
+            return;
+        if (tcp_send_line_enc(players[v].fd, &players[v].crypto, buf, n) != 0)
             drop(v);
     } else if (players[v].udp_ok) { /* lossy is fine: UDP */
         unsigned char wire[UDP_PKT_MAX + 64];

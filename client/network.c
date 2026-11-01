@@ -410,7 +410,11 @@ static int pump_tcp(void)
     for (;;) {
         unsigned char chunk[CRYPTO_SESSION_TCP_IO_MAX];
         ssize_t n = recv(networkSocketFd, chunk, sizeof chunk, 0);
-        if (n == 0) return 0;
+        if (n == 0) {
+            if (awaiting_lobby_banner)
+                fprintf(stderr, "server closed connection during encrypted handshake\n");
+            return 0;
+        }
         if (n < 0) return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
         if (crypto_session_tcp_feed(&crypto, chunk, (size_t)n, tcp_line_cb, NULL) != 0) {
             if (awaiting_lobby_banner)
