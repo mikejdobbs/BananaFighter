@@ -55,8 +55,9 @@ enum { IN_L = 1, IN_R = 2, IN_U = 4, IN_D = 8,
 
 /* cmd uses the last direction-input sequence; move input is the final punch/kick button.
    CMD_NONE means a normal. CMD_QCF = down, down-forward, forward. CMD_HCF = back, down-back,
-   down, down-forward, forward. Commands also require the move's meter cost. */
-enum { CMD_NONE, CMD_QCF, CMD_HCF };
+   down, down-forward, forward. CMD_FDF = forward, down, forward (toward, down, toward).
+   Commands also require the move's meter cost. */
+enum { CMD_NONE, CMD_QCF, CMD_HCF, CMD_FDF };
 
 /* Optional animation override for a move (sprite row); A_AUTO picks one from the button/command. */
 enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
@@ -66,6 +67,8 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
            Its hitbox y is measured from the fighter's feet and may be negative (hits downward).
    spread: fires this many projectiles in a fan; spread_vy is the vertical speed step between them.
    invis:  ticks of invisibility granted (any other move ends it).
+   invuln: if set, invulnerable for startup+active+recover ticks when the move begins (uses grace).
+   knockdown: on a clean hit, knock the victim down (fall, then get up) and pop them upward.
    throw:  grabs the closest victim in range (ignores blocking), damages and launches them.
    cost:   super meter needed (and spent). Non-throw melee hits everyone in range.
    ship:   calls a ship that drops this many bombs; dmg and kb apply per bomb.
@@ -80,7 +83,7 @@ typedef struct {
     int reach, y, h;
     int proj_speed, proj_life;
     int spread, spread_vy;
-    int invis, throw, cost;
+    int invis, invuln, knockdown, throw, cost;
     int ship, boom, spin, anim;
     int leap, leap_vy;
 } Move;
@@ -257,7 +260,7 @@ static const Character chars[] = {
         /* Special: throws fake orange hair (projectile) */
         { .name="hair toss", .input=IN_P, .cmd=CMD_QCF, .startup=9, .active=1, .recover=20, .dmg=55, .kb=10, .y=96, .h=20, .proj_speed=13, .proj_life=70, .spin=1, .anim=A_CAST },
         /* Special: upper cup (uppercut-style melee) with a yell (HP-based special) */
-        { .name="upper cup", .input=IN_HP, .cmd=CMD_HCF, .startup=6, .active=5, .recover=24, .dmg=140, .kb=34, .reach=52, .y=38, .h=120, .cost=40, .anim=A_SPECIAL },
+        { .name="upper cup", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=120, .y=-220, .h=400, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
         /* Charged special: calls the airforce (ship strike) */
         { .name="call airforce", .input=IN_HK, .cmd=CMD_HCF, .startup=18, .active=1, .recover=40, .dmg=80, .kb=60, .ship=5, .cost=60, .anim=A_SUPER },
     }},
@@ -282,7 +285,7 @@ static const Character chars[] = {
         { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=58, .kb=12, .reach=56, .y=-44, .h=74 },
         { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=76, .kb=16, .reach=60, .y=-44, .h=74 },
         { .name="chicken bone", .input=IN_P, .cmd=CMD_QCF, .startup=8, .active=1, .recover=18, .dmg=50, .kb=9, .y=92, .h=18, .proj_speed=14, .proj_life=65, .spin=1, .anim=A_CAST },
-        { .name="uppercut", .input=IN_HP, .cmd=CMD_HCF, .startup=6, .active=5, .recover=22, .dmg=130, .kb=32, .reach=50, .y=40, .h=118, .cost=40, .anim=A_SPECIAL },
+        { .name="uppercut", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=120, .y=-220, .h=400, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
         { .name="hillbilly truck", .input=IN_HK, .cmd=CMD_HCF, .startup=16, .active=1, .recover=38, .dmg=75, .kb=55, .ship=5, .cost=55, .anim=A_SUPER },
     }},
     { .name = "Kammy", .hp = 850, .lives = 3, .speed = 6, .jump = 28, .w = 60, .h = 156, .moves = {

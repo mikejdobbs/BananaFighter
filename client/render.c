@@ -162,7 +162,10 @@ static void pick(const Fig *f, int *row, int *col)
     else if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
         const Move *m = &c->moves[f->st];
         *row = ROW_MOVE + move_row(m);
-        if (m->leap && f->y > 40) *col = 4;
+        /* Flying kicks pick a cell from height. An uppercut stays on the
+           raised-fist cell for the whole jump; recovery plays after landing. */
+        if (m->leap_vy && f->y > 0) *col = 2;
+        else if (m->leap && f->y > 40) *col = 4;
         else if (m->leap && f->y > 12) *col = 3;
         else if (m->leap && f->y > 0) *col = 2;
         else *col = move_frame(m, a->t);
@@ -194,6 +197,76 @@ static void text(float x, float y, const char *fmt, ...)
     va_end(ap);
     SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
     SDL_RenderDebugText(renderer, x, y, b);
+}
+
+#define ARR_SZ 7.0f
+#define ARR_GAP 3.0f
+
+static void arrow_line(float x1, float y1, float x2, float y2)
+{
+    SDL_RenderLine(renderer, x1, y1, x2, y2);
+}
+
+/* One motion-input arrow glyph; returns width in pixels. */
+static float draw_arrow_glyph(float x, float y, int kind)
+{
+    float cx = x + ARR_SZ * 0.5f, cy = y + ARR_SZ * 0.5f;
+    SDL_SetRenderDrawColor(renderer, 250, 220, 80, 255);
+    switch (kind) {
+    case ARR_TOWARD:
+        arrow_line(cx - 3, cy, cx + 3, cy);
+        arrow_line(cx + 3, cy, cx, cy - 3);
+        arrow_line(cx + 3, cy, cx, cy + 3);
+        break;
+    case ARR_AWAY:
+        arrow_line(cx + 3, cy, cx - 3, cy);
+        arrow_line(cx - 3, cy, cx, cy - 3);
+        arrow_line(cx - 3, cy, cx, cy + 3);
+        break;
+    case ARR_DOWN:
+        arrow_line(cx, cy - 3, cx, cy + 3);
+        arrow_line(cx, cy + 3, cx - 3, cy);
+        arrow_line(cx, cy + 3, cx + 3, cy);
+        break;
+    case ARR_DOWN_TOWARD:
+        arrow_line(cx - 2, cy - 2, cx + 2, cy + 2);
+        arrow_line(cx + 2, cy + 2, cx - 1, cy + 2);
+        arrow_line(cx + 2, cy + 2, cx + 2, cy - 1);
+        break;
+    case ARR_DOWN_AWAY:
+        arrow_line(cx + 2, cy - 2, cx - 2, cy + 2);
+        arrow_line(cx - 2, cy + 2, cx + 1, cy + 2);
+        arrow_line(cx - 2, cy + 2, cx - 2, cy - 1);
+        break;
+    default:
+        break;
+    }
+    return ARR_SZ + ARR_GAP;
+}
+
+/* face < 0: character faces left, so "toward" is the left arrow. */
+static int arrow_for_face(int kind, int face)
+{
+    if (face >= 0)
+        return kind;
+    switch (kind) {
+    case ARR_TOWARD: return ARR_AWAY;
+    case ARR_AWAY: return ARR_TOWARD;
+    case ARR_DOWN_TOWARD: return ARR_DOWN_AWAY;
+    case ARR_DOWN_AWAY: return ARR_DOWN_TOWARD;
+    default: return kind;
+    }
+}
+
+static float draw_cmd_arrows(float x, float y, int cmd, int face)
+{
+    int steps[8], n = cmd_arrow_steps(cmd, steps, 8);
+    if (!n)
+        return 0;
+    float ox = x;
+    for (int i = 0; i < n; i++)
+        x += draw_arrow_glyph(x, y, arrow_for_face(steps[i], face));
+    return x - ox;
 }
 
 /* Draw a fighter using a sprite sheet */
@@ -365,7 +438,18 @@ void draw_match(void)
             box(x, 36, 108.0f * fuel / chars[f->ch].fuel, 4, 90, 170, 255, 255);
         }
     }
-    text(10, SH - 32, "motion: %s   Esc: options", mycmd == CMD_HCF ? "HCF" : mycmd == CMD_QCF ? "QCF" : "-");
+    text(10, SH - 32, "motion:");
+    {
+        int face = 1;
+        for (int i = 0; i < nf; i++)
+            if (F[i].slot == me)
+                face = predicting ? pb.face : F[i].face;
+        if (mycmd)
+            draw_cmd_arrows(72, SH - 34, mycmd, face);
+        else
+            text(72, SH - 32, "-");
+    }
+    text(200, SH - 32, "Esc: options");
     text(10, SH - 16, "predicting: %s   unacked inputs: %u", predicting ? "on" : "off", sent - ack);
     if (winner) {
         char b[32];
@@ -400,7 +484,7 @@ void options_input(int edge, int confirm, int *quit)
 /* Render the options menu overlay and control hints */
 void draw_options(void)
 {
-    const float w = 560, h = 400, x = (SW - w) / 2, y = 90;
+    const float w = 560, h = 440, x = (SW - w) / 2, y = 80;
     const char *label[OPT_COUNT] = {
         "Resume",
         mastervol > 0 ? "Sound: ON" : "Sound: OFF",
@@ -426,8 +510,14 @@ void draw_options(void)
     text(x + 24, y + 298, "Keyboard: arrows/WASD move, U I O punch, J K L kick");
     text(x + 24, y + 314, "Alt keys: Z X C punch, V B N kick.  AWAY blocks; AWAY+UP jumps back");
     text(x + 24, y + 330, "Gamepad: d-pad/stick move, X Y RB punch, A B RT kick");
-    text(x + 24, y + 346, "QCF+punch = fireball.  HCF+button = super / big special");
-    text(x + 24, y + 362, "Squirrel: hold jump in the air to fly.  Jump and press an attack");
+    text(x + 24, y + 346, "Projectile / big special / uppercut motions (arrows + button):");
+    draw_cmd_arrows(x + 24, y + 362, CMD_QCF, 1);
+    text(x + 24 + 36, y + 364, "+ punch");
+    draw_cmd_arrows(x + 24, y + 380, CMD_HCF, 1);
+    text(x + 24 + 60, y + 382, "+ button");
+    draw_cmd_arrows(x + 24, y + 398, CMD_FDF, 1);
+    text(x + 24 + 36, y + 400, "+ HP uppercut (toward the opponent)");
+    text(x + 24, y + 418, "Squirrel: hold jump in the air to fly.  Jump and press an attack");
 }
 
 /* =============================== Fighter select =============================== */
@@ -546,8 +636,16 @@ void draw_select(int cur, int asel)
         const Move *m = &c->moves[k];
         char cost[16] = "";
         if (m->cost) snprintf(cost, sizeof cost, " [%d]", m->cost);
-        text(480, 128 + line++ * 14, "%-11.11s %s%s%s%s", m->name, m->air ? "(air) " : "",
-             m->cmd ? (m->cmd == CMD_QCF ? "QCF+" : "HCF+") : "", btn_label(m->input), cost);
+        {
+            float ly = 128 + line++ * 14;
+            text(480, ly, "%-11.11s%s", m->name, m->air ? " (air)" : "");
+            float ax = 480 + 118;
+            if (m->air)
+                ax += 32;
+            if (m->cmd)
+                ax += draw_cmd_arrows(ax, ly - 2, m->cmd, 1);
+            text(ax, ly, "%s%s", btn_label(m->input), cost);
+        }
     }
 
     /* the scrolling grid of fighter portraits */

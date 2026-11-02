@@ -21,33 +21,85 @@ static inline int jump_vel(const Character *c)
     return c->jump * JUMP_NUM / JUMP_DEN;
 }
 
-/* Does the window w[0..n-1] (oldest..newest) contain the motion in seq?
-   Letters: d = down, D = down+forward, f = forward, b = back, B = down+back.
-   Each tick advances at most one step; extra ticks in between are forgiven. */
-static inline int motion(const int *w, int n, int face, const char *seq)
+/* One motion step. Extra letters for the dragon-punch (straight, down, straight):
+   s = toward only, v = down only, S = toward (down may still be held). */
+static inline int step_ok(int bits, int face, char kind)
 {
-    int fw = face > 0 ? IN_R : IN_L, bk = face > 0 ? IN_L : IN_R, st = 0, len = 0, last = -1;
-    while (seq[len]) len++;
-    for (int i = 0; i < n && st < len; i++) {
-        int f = !!(w[i] & fw), b = !!(w[i] & bk), d = !!(w[i] & IN_D), ok;
-        switch (seq[st]) {
-            case 'd': ok = d; break;
-            case 'D': ok = d && f; break;
-            case 'f': ok = f; break;
-            case 'b': ok = b; break;
-            default:  ok = d && b; break;
-        }
-        if (ok) { st++; last = i; }
+    int fw = face > 0 ? IN_R : IN_L, bk = face > 0 ? IN_L : IN_R;
+    int f = !!(bits & fw), b = !!(bits & bk), d = !!(bits & IN_D);
+    switch (kind) {
+    case 'd': return d;
+    case 'D': return d && f;
+    case 'f': return f;
+    case 'b': return b;
+    case 's': return f && !d && !b;
+    case 'v': return d && !f && !b;
+    case 'S': return f && !b;
+    default:  return d && b;
     }
-    return st == len && last >= n - 1 - CMD_RECENT;
+}
+
+/* Does the window contain seq, finished within the last `recent` ticks?
+   Every start index is tried, so an older completed motion cannot hide a new one. */
+static inline int motion(const int *w, int n, int face, const char *seq, int recent)
+{
+    int len = 0;
+    while (seq[len]) len++;
+    for (int start = 0; start < n; start++) {
+        int st = 0, last = -1;
+        for (int i = start; i < n && st < len; i++) {
+            if (step_ok(w[i], face, seq[st])) {
+                st++;
+                last = i;
+            }
+        }
+        if (st == len && last >= n - 1 - recent)
+            return 1;
+    }
+    return 0;
 }
 
 /* The longer motion wins, because it contains the shorter one. */
 static inline int detect_cmd(const int *w, int n, int face)
 {
-    if (motion(w, n, face, "bBdDf")) return CMD_HCF;
-    if (motion(w, n, face, "dDf")) return CMD_QCF;
+    if (motion(w, n, face, "bBdDf", CMD_RECENT)) return CMD_HCF;
+    /* Toward, down, toward. Down may overlap a sideways key. Either side works;
+       the attack still faces the opponent. Before QCF so it is not a projectile. */
+    if (motion(w, n, face, "fdf", CMD_RECENT + 8) || motion(w, n, -face, "fdf", CMD_RECENT + 8))
+        return CMD_FDF;
+    if (motion(w, n, face, "dDf", CMD_RECENT)) return CMD_QCF;
     return CMD_NONE;
+}
+
+/* Motion steps for UI arrows (toward = right on select / HUD). */
+enum { ARR_DOWN = 0, ARR_TOWARD, ARR_AWAY, ARR_DOWN_TOWARD, ARR_DOWN_AWAY };
+
+static inline int cmd_arrow_steps(int cmd, int *steps, int max)
+{
+    switch (cmd) {
+    case CMD_QCF:
+        if (max < 3) return 0;
+        steps[0] = ARR_DOWN;
+        steps[1] = ARR_DOWN_TOWARD;
+        steps[2] = ARR_TOWARD;
+        return 3;
+    case CMD_HCF:
+        if (max < 5) return 0;
+        steps[0] = ARR_AWAY;
+        steps[1] = ARR_DOWN_AWAY;
+        steps[2] = ARR_DOWN;
+        steps[3] = ARR_DOWN_TOWARD;
+        steps[4] = ARR_TOWARD;
+        return 5;
+    case CMD_FDF:
+        if (max < 3) return 0;
+        steps[0] = ARR_TOWARD;
+        steps[1] = ARR_DOWN;
+        steps[2] = ARR_TOWARD;
+        return 3;
+    default:
+        return 0;
+    }
 }
 
 /* Which animation row (0..21) a move uses; the sheet row is 7 + this.
@@ -111,11 +163,14 @@ static inline int body_step(Body *body, const Character *character,
         body->crouch = (body->y == 0 && m->crouch);
 
         int f = body->frame++;
-        if (m->leap && !m->crouch && f == m->startup && body->y == 0) {
-            int vy = m->leap_vy ? m->leap_vy : jump_vel(character);
+        /* leap_vy moves (uppercut) already left the ground on the start tick.
+           Other leaps rise when they become active. */
+        if (m->leap && !m->leap_vy && !m->crouch && f == m->startup && body->y == 0) {
+            int vy = jump_vel(character);
             if (vy > 0) body->vy = vy;
         }
-        if (m->leap && f >= m->startup && f < m->startup + m->active + m->recover)
+        int leap_from = m->leap_vy ? 0 : m->startup;
+        if (m->leap && f >= leap_from && f < m->startup + m->active + m->recover)
             body->vx = body->face * m->leap;
         if (f == m->startup && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
         else if (!m->proj_speed && !m->ship && (m->dmg || m->boom) && !body->hit
@@ -157,8 +212,21 @@ static inline int body_step(Body *body, const Character *character,
         }
 
         /* Attack selection runs for every idle posture: standing, ducking and blocking.
-           Commands first, so QCF + punch is a fireball and not a normal punch. Ground moves
-           need the ground and jump attacks need the air, so a jump kick can't be done standing. */
+           Close standing heavy punch throws, unless this is the uppercut motion.
+           Other commands beat normals, so a projectile isn't a jab. */
+        if (!airborne && !ducking && nearfoe && (in & IN_HP) && cmd != CMD_FDF) {
+            for (int k = 0; k < MAXMOVES && character->moves[k].name && body->move < 0; k++) {
+                const Move *m = &character->moves[k];
+                if (!m->throw || m->air || m->cmd || m->crouch) continue;
+                if (!(in & m->input) || body->meter < m->cost) continue;
+                body->move = k; body->frame = 0; body->hit = 0; body->flying = 0;
+                body->block = 0;
+                body->crouch = 0;
+                body->meter -= m->cost;
+                body->invis = m->invis;
+                if (body->y == 0) body->vx = 0;
+            }
+        }
         for (int pass = 0; pass < 2 && body->move < 0; pass++)
             for (int k = 0; k < MAXMOVES && character->moves[k].name; k++) {
                 const Move *m = &character->moves[k];
@@ -175,7 +243,12 @@ static inline int body_step(Body *body, const Character *character,
                 body->crouch = (!airborne && m->crouch);  /* posture comes from the move */
                 body->meter -= m->cost;
                 body->invis = m->invis;
-                if (body->y == 0) body->vx = 0;
+                if (m->invuln)
+                    body->grace = m->startup + m->active + m->recover;
+                if (m->leap_vy) {
+                    body->vy = m->leap_vy; /* leave the ground on this tick */
+                    if (m->leap) body->vx = body->face * m->leap;
+                } else if (body->y == 0) body->vx = 0;
                 break;
             }
     }

@@ -64,6 +64,11 @@ static void hurt(Player *a, Player *v, const Move *m, int dir) {
                 vb->vy = 0;
                 vb->down = 1;
                 vb->crouch = 1; /* stay down until get-up window */
+            } else if (m->knockdown) {
+                vb->stun = KNOCKDOWN_STUN;
+                vb->vy = 30; /* pop up, then fall */
+                vb->down = 1;
+                vb->crouch = 1;
             }
         }
         vb->move = -1;
@@ -171,7 +176,8 @@ void melee(int player_index, const Move *move) {
     int player_x0 = player->body.x + player->body.face * character->w / 2;
     int player_x1 = player_x0 + player->body.face * move->reach;
     int best = -1;
-    int want_throw = (move->input == IN_HP); /* high punch triggers throw when close */
+    /* Close standing heavy punch throws. Command specials (uppercut) keep their own hit. */
+    int want_throw = !move->cmd && !move->crouch && !move->air && move->input == IN_HP;
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
         Player *nearby_player = &players[i];

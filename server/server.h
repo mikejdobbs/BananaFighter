@@ -56,7 +56,7 @@ typedef struct {
     int bot;                /* 1 = computer-controlled slot, 0 = human or empty */
     int ai;                 /* index into ais[]: which AI plugin drives this bot */
     int think_cd;           /* ticks until the bot decides again; it holds its input until then */
-    int cmd;                /* motion command (CMD_QCF/CMD_HCF) the bot "performs" with its button */
+    int cmd;                /* motion command (CMD_QCF/HCF/FDF) the bot "performs" with its button */
     unsigned rng;           /* this bot's own random-number state, so bots don't act in lockstep */
 
     /* Humans: partial-line buffer for cleartext K handshake and decrypted lines. */
