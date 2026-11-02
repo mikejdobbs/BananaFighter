@@ -15,6 +15,7 @@ sys.path.insert(0, ROOT)
 
 import make_sprites as ms  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
+from tools import sprite_packer_util as spu  # noqa: E402
 
 SPRITES = os.path.join(ROOT, "sprites")
 FRAMES = os.path.join(ROOT, "tools", "refs", "jv_style_a_frames")
@@ -170,12 +171,13 @@ def sheet_rows() -> list[list[str]]:
     air_hk = ["jump_0", "jump_1", "high_kick", "high_kick", "jump_2", "jump_3"]
     duck_p = _phase("crouch", "crouch_punch", "crouch")
     duck_k = _phase("crouch", "crouch_kick", "crouch")
+    duck_sweep = _phase("crouch", "crouch_sweep", "crouch")
     rows = [
         ["idle"] * 6,
-        ["walk_0", "walk_1", "walk_2", "walk_3"] * 2,
+        [f"walk_{i}" for i in range(8)],
         ["jump_0", "jump_1", "jump_2", "jump_2", "jump_3", "idle"],
         ["block", "block"],
-        ["hurt"] * 6 + ["crouch", "idle"],
+        ["hurt", "hurt", "hurt", "fall_0", "fall_1", "fall_2", "fall_knees", "idle"],
         [],
         ["crouch", "crouch"],
         punch,
@@ -195,7 +197,7 @@ def sheet_rows() -> list[list[str]]:
         duck_p,
         duck_k,
         duck_k,
-        duck_k,
+        duck_sweep,
         air_p,
         air_p,
         air_k,
@@ -211,7 +213,13 @@ def build_sheet(cache: dict[str, Image.Image]) -> Image.Image:
     slouch = standing_scale(cache["idle"])
     for r, names in enumerate(sheet_rows()):
         for col, name in enumerate(names):
-            if name.startswith("crouch"):
+            if r == 1:
+                cell = spu.place_walk(cache[name], cache["idle"], cell=CELL)
+            elif name.startswith("fall_"):
+                cell = spu.place_walk(cache[name], cache["idle"], cell=CELL)
+            elif name == "crouch_sweep":
+                cell = place(cache[name])
+            elif name.startswith("crouch"):
                 cell = place_slouch(cache[name], slouch)
             else:
                 bob = idle_bob[col] if r == 0 else 0
@@ -229,6 +237,10 @@ def main():
         "walk_1",
         "walk_2",
         "walk_3",
+        "walk_4",
+        "walk_5",
+        "walk_6",
+        "walk_7",
         "jump_0",
         "jump_1",
         "jump_2",
@@ -237,8 +249,13 @@ def main():
         "crouch_block",
         "crouch_punch",
         "crouch_kick",
+        "crouch_sweep",
         "block",
         "hurt",
+        "fall_0",
+        "fall_1",
+        "fall_2",
+        "fall_knees",
         "punch_windup",
         "punch_hit",
         "punch_recover",

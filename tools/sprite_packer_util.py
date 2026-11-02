@@ -118,6 +118,58 @@ def place_slouch(im: Image.Image, scale: float, cell: int = CELL) -> Image.Image
     return paste_scaled(im, scale, 0, cell)
 
 
+def foot_bottom(im: Image.Image, *, center_frac: float = 0.6) -> int | None:
+    """Lowest opaque scanline, using only the central band of the image."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    if w <= 0 or h <= 0:
+        return None
+    px = im.load()
+    x0 = int(w * (0.5 - center_frac / 2))
+    x1 = int(w * (0.5 + center_frac / 2))
+    x0 = max(0, x0)
+    x1 = min(w, max(x0 + 1, x1))
+    for y in range(h - 1, -1, -1):
+        for x in range(x0, x1):
+            if px[x, y][3] >= 16:
+                return y
+    return None
+
+
+def paste_foot_anchored(
+    im: Image.Image,
+    scale: float,
+    bob: int = 0,
+    *,
+    floor_y: int | None = None,
+    cell: int = CELL,
+) -> Image.Image:
+    canvas = Image.new("RGBA", (cell, cell), (0, 0, 0, 0))
+    bb = im.getbbox()
+    if not bb:
+        return canvas
+    if floor_y is None:
+        floor_y = cell - 4
+    crop = im.crop(bb)
+    orig_h = max(1, bb[3] - bb[1])
+    nw = max(1, int(round(crop.width * scale)))
+    nh = max(1, int(round(orig_h * scale)))
+    crop = crop.resize((nw, nh), Image.LANCZOS)
+    foot_y = foot_bottom(im)
+    if foot_y is None:
+        foot_y = bb[3] - 1
+    foot_from_top = (foot_y - bb[1]) / orig_h * nh
+    x = (cell - nw) // 2
+    y = int(round(floor_y - bob - foot_from_top))
+    canvas.paste(crop, (x, max(0, y)), crop)
+    return canvas
+
+
+def place_walk(im: Image.Image, idle: Image.Image, bob: int = 0, cell: int = CELL) -> Image.Image:
+    scale = standing_scale(idle, cell)
+    return paste_foot_anchored(im, scale, bob, cell=cell)
+
+
 def phase(windup: str, hit: str, recover: str) -> list[str]:
     return [windup, windup, hit, hit, recover, recover]
 
@@ -133,12 +185,13 @@ def standard_sheet_rows(*, special: list[str], ship: tuple[str, str]) -> list[li
     air_hk = ["jump_0", "jump_1", "high_kick", "high_kick", "jump_2", "jump_3"]
     duck_p = phase("crouch", "crouch_punch", "crouch")
     duck_k = phase("crouch", "crouch_kick", "crouch")
+    duck_sweep = phase("crouch", "crouch_sweep", "crouch")
     rows = [
         ["idle"] * 6,
-        ["walk_0", "walk_1", "walk_2", "walk_3"] * 2,
+        [f"walk_{i}" for i in range(8)],
         ["jump_0", "jump_1", "jump_2", "jump_2", "jump_3", "idle"],
         ["block", "block"],
-        ["hurt"] * 6 + ["crouch", "idle"],
+        ["hurt", "hurt", "hurt", "fall_0", "fall_1", "fall_2", "fall_knees", "idle"],
         [],
         ["crouch", "crouch"],
         punch,
@@ -158,7 +211,7 @@ def standard_sheet_rows(*, special: list[str], ship: tuple[str, str]) -> list[li
         duck_p,
         duck_k,
         duck_k,
-        duck_k,
+        duck_sweep,
         air_p,
         air_p,
         air_k,
@@ -181,7 +234,13 @@ def build_sheet_from_rows(
     slouch = standing_scale(cache["idle"], cell)
     for r, names in enumerate(rows):
         for col, name in enumerate(names):
-            if name.startswith("crouch"):
+            if r == 1:
+                cell_im = place_walk(cache[name], cache["idle"], cell=cell)
+            elif name.startswith("fall_"):
+                cell_im = place_walk(cache[name], cache["idle"], cell=cell)
+            elif name == "crouch_sweep":
+                cell_im = place(cache[name], 0, cell)
+            elif name.startswith("crouch"):
                 cell_im = place_slouch(cache[name], slouch, cell)
             else:
                 bob = idle_bob[col] if r == 0 else 0

@@ -68,6 +68,7 @@ static Fig eff(int i)
         f.st = (pb.stun && pb.crouch) ? -7
              : (pb.stun && pb.down) ? -8
              : pb.stun ? -2
+             : (pb.block && pb.crouch) ? -6
              : pb.block ? -3
              : pb.move >= 0 ? pb.move
              : pb.flying ? -4
@@ -150,7 +151,12 @@ static void pick(const Fig *f, int *row, int *col)
         else *col = 7;                       /* up on the feet */
     }
     else if (f->st == -2) { *row = ROW_HURT; *col = a->t < 3 ? 0 : a->t < 8 ? 1 : 2; }
+    else if (f->y == 0 && a->still < WALK_HOLD && (f->st == -3 || f->st == -6)) {
+        *row = ROW_WALK;
+        *col = (a->walk / WALK_TICKS) % WALK_FR;
+    }
     else if (f->st == -3) { *row = ROW_BLOCK; *col = a->t < 4 ? 0 : 1; }
+    else if (f->st == -6) { *row = ROW_MOVE + 11; *col = a->t < 4 ? 0 : 1; }
     else if (f->st == -4) { *row = ROW_FLY; *col = (aclk / 2) % FLY_FR; }
     else if (f->st == -5) { *row = ROW_CROUCH; *col = a->t < 4 ? 0 : 1; }
     else if (f->st >= 0 && f->st < MAXMOVES && c->moves[f->st].name) {
