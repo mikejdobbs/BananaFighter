@@ -68,8 +68,29 @@ def keep_largest(im: Image.Image) -> Image.Image:
                         seen[j] = 1
                         q.append((nx, ny))
             comps.append(comp)
-    biggest = max((len(c) for c in comps), default=0)
-    keep = {p for c in comps if len(c) >= max(400, biggest // 40) for p in c}
+    if not comps:
+        return im
+
+    def _bbox(comp: list[tuple[int, int]]) -> tuple[int, int, int, int]:
+        xs = [p[0] for p in comp]
+        ys = [p[1] for p in comp]
+        return min(xs), min(ys), max(xs), max(ys)
+
+    main = max(comps, key=len)
+    keep = set(main)
+    _, my0, _, my1 = _bbox(main)
+    main_h = max(1, my1 - my0)
+    for comp in comps:
+        if comp is main:
+            continue
+        if len(comp) < max(400, len(main) // 40):
+            continue
+        x0, y0, x1, y1 = _bbox(comp)
+        ch, cw = y1 - y0, x1 - x0
+        # Drop a second full-size figure (e.g. a stray referee) but keep hair/bone props.
+        if ch > main_h * 0.55 and cw > w * 0.12:
+            continue
+        keep.update(comp)
     for y in range(h):
         for x in range(w):
             if px[x, y][3] and (x, y) not in keep:
