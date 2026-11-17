@@ -37,7 +37,7 @@ sprites/, sounds/        client assets (PNG sprite sheets; WAV)
 make_sprites.py          rebuild all (or selected) sprite sheets
 make_sounds.py           regenerate sound assets
 make_macos.sh            Release .app → versioned DMG under dist/
-make_windows.sh          MinGW cross-build → versioned zip (+ Inno if iscc)
+make_windows.sh          MinGW cross-build → versioned zip; optional Inno via Docker/CI
 packaging/windows/       Inno Setup script + portable staging helper
 tools/
   build_<char>_sprites.py   one builder per roster fighter
@@ -119,13 +119,13 @@ Link against `ws2_32` is handled by CMake. The client must include `embed.h` onl
 
 Install the toolchain (`brew install mingw-w64` on macOS). Build **MinGW** copies of
 libsodium and SDL3 into a prefix (do not use Homebrew’s arm64/mac libraries), e.g.
-`$HOME/mingw-deps`, then pack a versioned portable zip (and an Inno Setup installer if `iscc` is on `PATH`):
+`$HOME/mingw-deps`, then pack a versioned portable zip:
 
 ```
 ./make_windows.sh
 ```
 
-That builds into `build-mingw/` and writes `dist/BananaFighter-<BF_VERSION>-windows-x86_64.zip` with:
+That always builds into `build-mingw/` and writes `dist/BananaFighter-<BF_VERSION>-windows-x86_64.zip` with:
 
 ```
 BananaFighter-windows-x86_64/
@@ -137,20 +137,21 @@ BananaFighter-windows-x86_64/
   sounds/
 ```
 
-Players unzip and run `client.exe` from that folder, or use the `-setup.exe` installer when built.
-Dedicated hosts can run `server.exe` alone. Override the deps prefix with
-`MINGW_DEPS=/path ./make_windows.sh` if needed. Test on Windows or Wine; the binaries will not run
-natively on macOS.
+Players unzip and run `client.exe` from that folder. Dedicated hosts can run `server.exe` alone.
+Override the deps prefix with `MINGW_DEPS=/path ./make_windows.sh` if needed. Test the binaries on
+a Windows machine; they will not run natively on macOS.
 
-The portable zip always builds on macOS/Linux. The Inno Setup `-setup.exe` needs a Windows
-compiler host — `make_windows.sh` will use, in order:
+The Inno Setup `-setup.exe` is separate (Inno’s compiler is Windows-only). Prefer one of:
 
-1. Native `iscc` on `PATH` (Windows)
-2. Docker image `amake/innosetup` (good fit for MinGW cross-builds on macOS; install Docker Desktop)
-3. Wine + Inno Setup (`./packaging/windows/setup_iscc_wine.sh` after `brew install --cask wine-stable`)
+1. **Docker Desktop** on macOS — `make_windows.sh` runs `amake/innosetup` when `docker` is available
+2. **Native `iscc`** on Windows
+3. **CI** — tagging `v*` builds `-setup.exe` on GitHub Actions (`windows-latest`)
 
-If none of those are available, the zip alone is still a valid release artifact; tagging `v*` still
-builds `-setup.exe` on GitHub Actions (`windows-latest`).
+The zip alone is a valid release artifact if you skip the installer locally.
+
+Advanced: if you already have a working Wine prefix with Inno Setup, `make_windows.sh` can drive
+it (`./packaging/windows/setup_iscc_wine.sh`). Homebrew’s Wine casks are currently disabled for
+Gatekeeper, so do not treat `brew install --cask wine-stable` as the default path.
 
 ### macOS DMG
 
@@ -288,13 +289,15 @@ see Gatekeeper or SmartScreen warnings — that is expected for OSS builds.
    - `BananaFighter-<ver>-windows-x86_64-setup.exe` (Inno Setup)
    - `BananaFighter-<ver>-windows-x86_64.zip` (portable)
 
-Local packaging without CI:
+Local packaging (this Mac):
 
 ```
 ./make_macos.sh      # → dist/*.dmg
-./make_windows.sh    # → dist/*.zip (+ *-setup.exe if iscc is installed)
+./make_windows.sh    # → dist/*.zip  (+ *-setup.exe if Docker or iscc is available)
 gh release create v1.0.3 dist/BananaFighter-1.0.3-*
 ```
+
+Without Docker/iscc locally, ship the zip from MinGW and let the tag workflow attach `-setup.exe`.
 
 **Opening unsigned builds**
 
