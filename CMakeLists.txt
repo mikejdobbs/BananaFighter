@@ -5,6 +5,17 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+# BF_VERSION from config.h (handshake + bundle / installer versioning).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/config.h" _bf_version_line
+  REGEX "^#define[ \t]+BF_VERSION[ \t]+")
+if(_bf_version_line MATCHES "\"([^\"]+)\"")
+  set(BF_VERSION "${CMAKE_MATCH_1}")
+else()
+  set(BF_VERSION "0.0.0")
+  message(WARNING "could not parse BF_VERSION from config.h")
+endif()
+unset(_bf_version_line)
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -291,8 +302,8 @@ if(SDL3_FOUND)
       MACOSX_BUNDLE_BUNDLE_NAME "BananaFighter"
       MACOSX_BUNDLE_GUI_IDENTIFIER "com.bananafighter.client"
       MACOSX_BUNDLE_INFO_STRING "BananaFighter"
-      MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
-      MACOSX_BUNDLE_BUNDLE_VERSION "1"
+      MACOSX_BUNDLE_SHORT_VERSION_STRING "${BF_VERSION}"
+      MACOSX_BUNDLE_BUNDLE_VERSION "${BF_VERSION}"
       XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.bananafighter.client"
       XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
       XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "15.0")

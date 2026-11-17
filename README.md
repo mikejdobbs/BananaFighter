@@ -36,6 +36,9 @@ client/                  SDL3 client (main, audio, input, network, render)
 sprites/, sounds/        client assets (PNG sprite sheets; WAV)
 make_sprites.py          rebuild all (or selected) sprite sheets
 make_sounds.py           regenerate sound assets
+make_macos.sh            Release .app → versioned DMG under dist/
+make_windows.sh          MinGW cross-build → versioned zip (+ Inno if iscc)
+packaging/windows/       Inno Setup script + portable staging helper
 tools/
   build_<char>_sprites.py   one builder per roster fighter
   procedural_sprites.py     procedural sheet / shots / fx / background drawing
@@ -116,13 +119,13 @@ Link against `ws2_32` is handled by CMake. The client must include `embed.h` onl
 
 Install the toolchain (`brew install mingw-w64` on macOS). Build **MinGW** copies of
 libsodium and SDL3 into a prefix (do not use Homebrew’s arm64/mac libraries), e.g.
-`$HOME/mingw-deps`, then pack a portable 64-bit Windows zip (no installer):
+`$HOME/mingw-deps`, then pack a versioned portable zip (and an Inno Setup installer if `iscc` is on `PATH`):
 
 ```
 ./make_windows.sh
 ```
 
-That builds into `build-mingw/` and writes `dist/BananaFighter-windows-x86_64.zip` with:
+That builds into `build-mingw/` and writes `dist/BananaFighter-<BF_VERSION>-windows-x86_64.zip` with:
 
 ```
 BananaFighter-windows-x86_64/
@@ -134,9 +137,30 @@ BananaFighter-windows-x86_64/
   sounds/
 ```
 
-Players unzip and run `client.exe` from that folder. Dedicated hosts can run `server.exe`
-alone. Override the deps prefix with `MINGW_DEPS=/path ./make_windows.sh` if needed.
-Test on Windows or Wine; the binaries will not run natively on macOS.
+Players unzip and run `client.exe` from that folder, or use the `-setup.exe` installer when built.
+Dedicated hosts can run `server.exe` alone. Override the deps prefix with
+`MINGW_DEPS=/path ./make_windows.sh` if needed. Test on Windows or Wine; the binaries will not run
+natively on macOS.
+
+The portable zip always builds on macOS/Linux. The Inno Setup `-setup.exe` needs a Windows
+compiler host — `make_windows.sh` will use, in order:
+
+1. Native `iscc` on `PATH` (Windows)
+2. Docker image `amake/innosetup` (good fit for MinGW cross-builds on macOS; install Docker Desktop)
+3. Wine + Inno Setup (`./packaging/windows/setup_iscc_wine.sh` after `brew install --cask wine-stable`)
+
+If none of those are available, the zip alone is still a valid release artifact; tagging `v*` still
+builds `-setup.exe` on GitHub Actions (`windows-latest`).
+
+### macOS DMG
+
+On macOS, pack a drag-to-Applications disk image:
+
+```
+./make_macos.sh
+```
+
+Writes `dist/BananaFighter-<BF_VERSION>-macos-<arch>.dmg` (Release build under `build-release/`).
 
 ## Assets
 
@@ -247,3 +271,32 @@ Bots occupy a slot with no socket or input queue. Each `AI_THINK_TICKS` ticks, a
 `server/ai.h` returns an input mask and optionally a motion command. The built-in AIs are `rusher`, `zoner` and
 `turtle`. To add one, write a function with the `AiFn` signature, append it to `ais[]`, and raise `MAXAI` in
 `config.h` if needed.
+
+## Releasing
+
+Builds are **unsigned** for now (no Apple Developer ID / notarization, no Windows Authenticode). Players may
+see Gatekeeper or SmartScreen warnings — that is expected for OSS builds.
+
+1. Bump `BF_VERSION` in [`config.h`](config.h) (client and server must match).
+2. Commit, then tag and push:
+   ```
+   git tag v1.0.3
+   git push origin v1.0.3
+   ```
+3. The [Release](.github/workflows/release.yml) workflow builds and uploads to a GitHub Release:
+   - `BananaFighter-<ver>-macos-<arch>.dmg`
+   - `BananaFighter-<ver>-windows-x86_64-setup.exe` (Inno Setup)
+   - `BananaFighter-<ver>-windows-x86_64.zip` (portable)
+
+Local packaging without CI:
+
+```
+./make_macos.sh      # → dist/*.dmg
+./make_windows.sh    # → dist/*.zip (+ *-setup.exe if iscc is installed)
+gh release create v1.0.3 dist/BananaFighter-1.0.3-*
+```
+
+**Opening unsigned builds**
+
+- **macOS:** right-click the app → Open, or System Settings → Privacy & Security → Open Anyway after the first block.
+- **Windows:** if SmartScreen appears, choose More info → Run anyway.
