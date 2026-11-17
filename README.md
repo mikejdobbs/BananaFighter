@@ -33,6 +33,19 @@ On the title screen:
 
 In the lobby, pick a fighter, add bots if you want, ready up, and fight. After a match you return to fighter select; disconnecting returns to the title screen.
 
+## Fighters
+
+- **Slurpy** — Floppy-eared chaos. Hurls a spinning *child*, leaps in with *ear flap*, and calls in the *red baron*.
+- **Alien** — Grey visitor with a *laser* beam and a *mothership* flyover when the meter is ready.
+- **Rump** — Big-hair brawler. Tosses *hair*, rises with *upper cup*, then radios the *airforce*.
+- **JV** — Hillbilly menace. Spits a *chicken bone*, empties the gut with *chicken barf*, and rolls a *hillbilly truck*.
+- **Kammy** — Witchy cackler. Throws a *manifesto*, closes with *cackle*, and nukes the stage with *mega cackle*.
+- **Flusk** — Awkward techie. Packs a *laser gun*, shrugs hard, and brings a *flying car*.
+- **Stephen** — Bat-wielding slugger. Pitches a *baseball*, lifts with a *bat uppercut*, then straps on the *bat rocket*.
+- **LoPicardo** — Fires a *phaser*, *assimilates* up close, and drops a *cube shaped ship*.
+- **Mike** — Classic fireball fighter. Tosses a spinning *fireball*, juggles with *sky uppercut*, and bombs from the *beach*.
+- **Krampus** — Holiday horror. Lobs *coal*, cracks the *whip*, and buzzes the stage with a *santa flyby*.
+
 ### Controls (defaults)
 
 | Action | Keyboard | Gamepad |
@@ -42,7 +55,7 @@ In the lobby, pick a fighter, add bots if you want, ready up, and fight. After a
 | Kick (light / medium / heavy) | J K L | A B RT |
 | Menu / pause | Esc | Start |
 
-Rebind keys in the in-game options menu. Some fighters can hold jump in the air for tail flight.
+Rebind keys in the in-game options menu. Specials and supers use motion inputs shown on the select screen.
 
 ## Dedicated server
 
