@@ -1,6 +1,13 @@
 # BananaFighter
 An OSS fighting game
 
+
+
+https://github.com/user-attachments/assets/02dc9696-6fc8-40b8-a1f7-813f27c25d2d
+
+
+
+
 A small networked fighting game: a C server that runs the match simulation, and an optional SDL3 client.
 Up to `MAX_PLAYERS` fighters (humans and computer-controlled bots) share one stage. The server is authoritative and
 ticks at `TICK_HZ`.
