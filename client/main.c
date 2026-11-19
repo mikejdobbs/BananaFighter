@@ -369,16 +369,13 @@ int main(int argc, char **argv)
                 sendf("B %d %d\n", cursorIndex, aiSelectionIndex);
                 sfx(SN_BOT, 0.8f);
             }
-            if (k == SDLK_BACKSPACE)
-                for (int i = nl - 1; i >= 0; i--)
-                    if (U[i].bot) {
+            /* Remove the bot standing on the highlighted fighter, not the last one added. */
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE)
+                for (int i = 0; i < nl; i++)
+                    if (U[i].bot && U[i].ch == cursorIndex) {
                         sendf("X %d\n", U[i].slot);
                         break;
                     }
-            if (k == SDLK_DELETE)
-                for (int i = 0; i < nl; i++)
-                    if (U[i].bot)
-                        sendf("X %d\n", U[i].slot);
         }
 
         if (screen == SCR_CONNECT)

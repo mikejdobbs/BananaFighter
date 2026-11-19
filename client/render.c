@@ -1493,7 +1493,7 @@ void draw_select(int cur, int asel)
     float hx = cell_x(0), hy = grid_top() + grid_h() + 22;
     text(hx, hy,      "Move: arrows/WASD/pad   Lock in: attack/Enter/Start");
     text(hx, hy + 16, "T or Back: add a bot as %s (%s)", c->name, nai ? aiName[asel] : "-");
-    text(hx, hy + 32, "[ ] or shoulders: bot AI   Backspace/Delete: remove");
+    text(hx, hy + 32, "[ ] or shoulders: bot AI   Backspace/Delete: remove highlighted");
     text(hx, hy + 48, "Esc: options menu");
 
     draw_roster();
