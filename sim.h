@@ -179,13 +179,20 @@ static inline int body_step(Body *body, const Character *character,
         body->crouch = (body->y == 0 && m->crouch);
 
         int f = body->frame++;
-        /* Rocket-pack supers: lift off and stay "flying". Wander vx/vy come from
-           update_stephen_pack_flights; gravity is skipped while the pack is active. */
+        /* Rocket-pack supers: lift off, then the stick steers. Gravity is skipped
+           while the pack is active. Pitches stay in update_stephen_pack_flights. */
         if (m->pack) {
             body->crouch = 0;
             body->flying = 1;
             if (f == 0)
                 body->vy = 14;
+            else if (f >= m->startup && f < m->startup + m->active) {
+                int fly = character->speed > 0 ? character->speed + 1 : 7;
+                body->vx = ((in & IN_R) ? fly : 0) - ((in & IN_L) ? fly : 0);
+                body->vy = ((in & IN_U) ? fly : 0) - ((in & IN_D) ? fly : 0);
+                if (look)
+                    body->face = look;
+            }
         }
         /* leap_vy moves (uppercut) already left the ground on the start tick.
            Other leaps rise when they become active. */
@@ -285,7 +292,7 @@ static inline int body_step(Body *body, const Character *character,
     /* Apply movement, clamped to the stage */
     body->x = hi(character->w / 2, lo(STAGE_W - character->w / 2, body->x + body->vx));
     body->y += body->vy;
-    /* Pack-active flight ignores gravity (server steers); recover falls normally. */
+    /* Pack flight ignores gravity; the stick sets vx/vy. Recover falls normally. */
     {
         int pack_air = 0;
         if (body->move >= 0) {
@@ -293,29 +300,29 @@ static inline int body_step(Body *body, const Character *character,
             /* frame was already incremented in the move branch */
             pack_air = lm->pack && body->frame <= lm->startup + lm->active;
         }
-        if (!pack_air)
+        if (pack_air) {
+            int half = character->w / 2;
+            if (body->x < half + 4)
+                body->x = half + 4;
+            else if (body->x > STAGE_W - half - 4)
+                body->x = STAGE_W - half - 4;
+            if (body->y < PACK_Y_MIN)
+                body->y = PACK_Y_MIN;
+            else if (body->y > FLY_CEIL)
+                body->y = FLY_CEIL;
+        } else
             body->vy -= GRAVITY;
     }
 
-    /* Landing (pack flight keeps altitude via update_stephen_pack_flights; don't pin to floor mid-active) */
+    /* Landing. Pack flight stays inside the altitude band above. */
     if (body->y <= 0) {
-        int pack_air = 0;
+        body->y = body->vy = 0;
         if (body->move >= 0) {
             const Move *lm = &character->moves[body->move];
-            pack_air = lm->pack && body->frame <= lm->startup + lm->active;
+            if (!lm->leap) body->vx = 0;
+            if (lm->air) body->move = -1; /* landing ends a jump attack */
         }
-        if (pack_air) {
-            body->y = 40;
-            if (body->vy < 4) body->vy = 4;
-        } else {
-            body->y = body->vy = 0;
-            if (body->move >= 0) {
-                const Move *lm = &character->moves[body->move];
-                if (!lm->leap) body->vx = 0;
-                if (lm->air) body->move = -1; /* landing ends a jump attack */
-            }
-            if (character->fuel) body->fuel = lo(character->fuel, body->fuel + FUEL_REGEN);
-        }
+        if (character->fuel) body->fuel = lo(character->fuel, body->fuel + FUEL_REGEN);
     }
 
     return ev;

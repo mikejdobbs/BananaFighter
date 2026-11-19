@@ -129,7 +129,7 @@ static int is_spin_slam_st(int ch, int st)
     return m->name && m->spin_slam;
 }
 
-/* True if this move is a rocket-pack wander flight (server-steered). */
+/* True if this move is a player-steered rocket-pack flight. */
 static int is_pack_st(int ch, int st)
 {
     if (st < 0 || st >= MAXMOVES || ch < 0 || ch >= NCHARS)
@@ -146,10 +146,6 @@ static Fig eff(int i)
         /* Prediction has no carry physics — trust server for the whole slam. */
         if (is_spin_slam_st(f.ch, f.st) ||
             (pb.move >= 0 && chars[pch].moves[pb.move].spin_slam))
-            return f;
-        /* Pack flight wander is server-owned; prediction would desync position. */
-        if (is_pack_st(f.ch, f.st) ||
-            (pb.move >= 0 && chars[pch].moves[pb.move].pack))
             return f;
         /* Chicken-bucket vanish is server-owned; prediction would desync invis. */
         if (f.invis)

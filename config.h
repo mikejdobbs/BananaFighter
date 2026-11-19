@@ -36,6 +36,7 @@
 /* tail flight: hold jump in the air to hover and climb, burning fuel; fuel refills on the ground */
 #define FLY_VMAX      7         /* top climb speed while flying */
 #define FLY_CEIL      460       /* flight ceiling */
+#define PACK_Y_MIN    60        /* rocket-pack flight floor (ceiling is FLY_CEIL) */
 #define FUEL_REGEN    4         /* fuel regained per tick on the ground */
 
 /* called ships and their bombs */
@@ -84,7 +85,7 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    cost:   super meter needed (and spent). Non-throw melee hits everyone in range.
    ship:   calls a ship that drops this many bombs; dmg and kb apply per bomb.
            With pack: number of exploding pitches fired while flying (no ship entity).
-   pack:   body-controlled rocket-pack flight: wander the stage and pitch exploding shots.
+   pack:   body-controlled rocket-pack flight: the player steers and pitches exploding shots.
    boom:   on the active frame, area damage at the attacker (like a bomb; owner immune).
    boom_r: AOE radius for boom (0 = BOMB_R).
    proj_x: how far in front of the body center a projectile spawns (0 = the body edge).

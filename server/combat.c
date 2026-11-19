@@ -191,21 +191,8 @@ static void spawn_pack_ball(Player *player, int owner, const Move *move)
     }
 }
 
-#define PACK_WANDER 20 /* ticks between random velocity changes */
-#define PACK_Y_MIN  60
-#define PACK_Y_MAX  FLY_CEIL
-
-/* Deterministic wander seed from slot + frame (no shared RNG). */
-static unsigned pack_rnd(int owner, int frame)
-{
-    unsigned x = (unsigned)(owner * 747796405u + (unsigned)frame * 2891336453u + 0x9E3779B9u);
-    x ^= x >> 16;
-    x *= 0x7FEB352Du;
-    x ^= x >> 15;
-    return x;
-}
-
-/* Steer pack-flight bodies and pitch exploding balls (any move with pack=1). */
+/* Pitch exploding balls during a player-steered pack flight (any move with pack=1).
+   vx/vy and facing come from body_step; this only keeps the body in bounds and fires. */
 void update_stephen_pack_flights(void)
 {
     for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -224,7 +211,8 @@ void update_stephen_pack_flights(void)
         if (frame >= flight_end)
             continue; /* recover: fall with gravity */
 
-        /* Face the nearest living foe so pitches aim usefully. */
+        /* Face the nearest living foe so pitches aim usefully.
+           body_step already did this from look; repeat so a missing look still aims. */
         int face_dir = 0, best_dist = 1 << 30;
         for (int k = 0; k < MAX_PLAYERS; k++) {
             if (k == i || !fighting(&players[k]))
@@ -240,37 +228,17 @@ void update_stephen_pack_flights(void)
         if (best_dist < (1 << 30))
             player->body.face = face_dir;
 
-        /* Re-roll wander velocity periodically after startup. */
-        if (frame >= move->startup && (frame - move->startup) % PACK_WANDER == 0) {
-            unsigned r = pack_rnd(i, frame);
-            int hx = (int)(r % 15) - 7;       /* -7..7 */
-            int hy = (int)((r >> 8) % 13) - 4; /* -4..8 */
-            if (hx == 0)
-                hx = (r & 1) ? 4 : -4;
-            player->body.vx = hx;
-            player->body.vy = hy;
-        }
-
-        /* Bounce / clamp inside the stage and flight band. */
+        /* Clamp inside the stage and flight band. Do not reverse velocity:
+           the stick overwrites vx/vy on the next tick. */
         int half = character->w / 2;
-        if (player->body.x <= half + 4) {
+        if (player->body.x < half + 4)
             player->body.x = half + 4;
-            if (player->body.vx < 0)
-                player->body.vx = -player->body.vx;
-        } else if (player->body.x >= STAGE_W - half - 4) {
+        else if (player->body.x > STAGE_W - half - 4)
             player->body.x = STAGE_W - half - 4;
-            if (player->body.vx > 0)
-                player->body.vx = -player->body.vx;
-        }
-        if (player->body.y < PACK_Y_MIN) {
+        if (player->body.y < PACK_Y_MIN)
             player->body.y = PACK_Y_MIN;
-            if (player->body.vy < 0)
-                player->body.vy = 6;
-        } else if (player->body.y > PACK_Y_MAX) {
-            player->body.y = PACK_Y_MAX;
-            if (player->body.vy > 0)
-                player->body.vy = -4;
-        }
+        else if (player->body.y > FLY_CEIL)
+            player->body.y = FLY_CEIL;
 
         /* Pitch exploding baseballs on a fixed cadence. */
         if (frame >= move->startup) {
