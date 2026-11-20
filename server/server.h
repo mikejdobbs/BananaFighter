@@ -47,6 +47,7 @@ typedef struct {
     const Move *carry_move;     /* move used for slam damage / boom */
     int carry_hits_left;        /* sky uppercut: air hits remaining while carrying */
     int carry_hit_cd;           /* ticks until the next air hit */
+    unsigned ride_mask;         /* bit per slot already hit by the current lion ride */
 
     /* Bots: no socket and no input queue. Their input comes from a plugin in ais[]. */
     int bot;                /* 1 = computer-controlled slot, 0 = human or empty */

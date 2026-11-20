@@ -337,6 +337,17 @@ FIGHT_RECIPES = {
         kick_vol=0.62, snare_vol=0.40, hat_vol=0.30, bass_vol=0.26, lead_vol=0.10,
         snare_fn='snare', hat_fn='sleigh', accent=None,
     ),
+    'kevkev': dict(  # savanna ride: warm gallop under a bright lead
+        bpm=128, bars=8,
+        roots=[45, 48, 43, 45, 41, 45, 48, 45],
+        triads=[(69, 72, 76), (72, 76, 79), (67, 71, 74), (69, 72, 76),
+                (65, 69, 72), (69, 72, 76), (72, 76, 79), (69, 72, 76)],
+        bass='tri', lead='sq', bass_duty=0.5, lead_duty=0.25,
+        arp_pat=[0, 2, 1, 2], bass_oct_on=2, lead_up_half=1,
+        kick_beats=(0, 2), snare_beats=(1, 3), hat_every=0.5, hat_swing=0.04,
+        kick_vol=0.58, snare_vol=0.42, hat_vol=0.22, bass_vol=0.22, lead_vol=0.11,
+        snare_fn='clap', hat_fn='hat', accent=None,
+    ),
 }
 
 def music_fight_from(recipe):
@@ -450,7 +461,7 @@ def music_menu():
 # Order matches chars[] in config.h (plus stadium first).
 FIGHT_TRACKS = (
     'stadium', 'slurpy', 'alien', 'rump', 'jv', 'kammy',
-    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus',
+    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev',
 )
 
 def main():
@@ -469,9 +480,11 @@ def main():
     if not want or 'music' in want:
         save('music_menu', music_menu())
         for name in FIGHT_TRACKS:
-            save(f'music_fight_{name}', music_fight_from(FIGHT_RECIPES[name]))
-        # Alias of stadium for older Xcode/CMake resource globs that still list it.
-        save('music_fight', music_fight_from(FIGHT_RECIPES['stadium']))
+            buf = music_fight_from(FIGHT_RECIPES[name])
+            save(f'music_fight_{name}', buf)
+            if name == 'stadium':
+                # Same bytes as the stadium track, for older resource globs.
+                save('music_fight', buf)
     print('wrote', sorted(os.listdir(OUT)))
 
 if __name__ == '__main__':

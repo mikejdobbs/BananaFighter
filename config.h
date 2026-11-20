@@ -2,7 +2,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define BF_VERSION    "1.0.3"   /* client/server must match (handshake V line) */
+#define BF_VERSION    "1.0.4"   /* client/server must match (handshake V line) */
 #define PORT          7777
 #define DISCOVER_PORT (PORT + 1) /* LAN server beacon (UDP broadcast) */
 #define DISCOVER_MAGIC "BFDISC"
@@ -90,7 +90,9 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    boom_r: AOE radius for boom (0 = BOMB_R).
    proj_x: how far in front of the body center a projectile spawns (0 = the body edge).
    spin:   the projectile's sprite spins in flight (client only).
-   leap:   forward speed during the leap; leap_vy is the initial rise (0 = ~70% of jump). */
+   leap:   forward speed during the leap; leap_vy is the initial rise (0 = ~70% of jump).
+   ride:   grounded dash speed (px/tick). Each foe in the hitbox is hurt once along the
+           path. Stays on the ground (no leap jump) and recovers early at the far edge. */
 typedef struct {
     const char *name;
     int input, cmd, cmd2, air, crouch;
@@ -101,7 +103,7 @@ typedef struct {
     int spread, spread_vy;
     int invis, invuln, knockdown, throw, spin_slam, combo_hits, bucket_burst, cost;
     int ship, pack, boom, boom_r, spin, anim;
-    int leap, leap_vy;
+    int leap, leap_vy, ride;
 } Move;
 
 #define SPIN_SLAM_TICKS  56 /* max ticks airborne before forced slam */
@@ -369,6 +371,32 @@ static const Character chars[] = {
         { .name="coal", .input=IN_P, .cmd=CMD_QCF, .startup=12, .active=1, .recover=22, .dmg=50, .kb=9, .y=94, .h=20, .proj_speed=13, .proj_life=70, .proj_x=66, .spin=1, .anim=A_CAST },
         { .name="whip", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=150, .y=-220, .h=400, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
         { .name="santa flyby", .input=IN_HK, .cmd=CMD_HCF, .startup=16, .active=1, .recover=38, .dmg=45, .kb=18, .y=80, .h=20, .ship=8, .cost=55, .anim=A_SUPER },
+    }},
+    { .name = "KevKev", .hp = 900, .lives = 3, .speed = 6, .jump = 28, .w = 58, .h = 156, .moves = {
+        { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=46, .y=88, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=86, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=76, .kb=17, .reach=68, .y=84, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=50, .y=14, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=72, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=82, .kb=19, .reach=86, .y=20, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=46, .y=42, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=40, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=76, .kb=17, .reach=68, .y=38, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=50, .y=6, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=72, .y=4, .h=40 },
+        { .name="crouch sweep", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=82, .kb=19, .reach=92, .y=0, .h=32 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=32, .kb=7, .reach=48, .y=18, .h=48 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=42, .kb=9, .reach=50, .y=18, .h=48 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=56, .kb=12, .reach=54, .y=18, .h=48 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=38, .kb=9, .reach=56, .y=-40, .h=72 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=52, .kb=11, .reach=58, .y=-40, .h=72 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=70, .kb=15, .reach=62, .y=-40, .h=72 },
+        { .name="hair tie", .input=IN_P, .cmd=CMD_QCF, .startup=12, .active=1, .recover=22, .dmg=50, .kb=9, .y=90, .h=18, .proj_speed=13, .proj_life=70, .proj_x=66, .spin=1, .anim=A_CAST },
+        /* Area uppercut: ankle-length hair sweeps everyone in the tall box. */
+        { .name="hair whip", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=180, .y=-180, .h=360, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
+        /* Grounded dash across the stage. ride speed hits each foe in the path once. */
+        { .name="lion ride", .input=IN_HK, .cmd=CMD_HCF, .startup=8, .active=90, .recover=18, .dmg=110, .kb=36, .reach=100, .y=0, .h=180, .invuln=1, .knockdown=1, .cost=55, .anim=A_SUPER, .ride=16 },
     }},
 };
 

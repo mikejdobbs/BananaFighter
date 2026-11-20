@@ -179,6 +179,13 @@ static inline int body_step(Body *body, const Character *character,
         body->crouch = (body->y == 0 && m->crouch);
 
         int f = body->frame++;
+        /* Lion ride: stay on the ground and dash. Hits are rechecked every active tick. */
+        if (m->ride) {
+            body->crouch = 0;
+            body->y = 0;
+            body->vy = 0;
+            body->vx = (f < m->startup + m->active) ? body->face * m->ride : 0;
+        }
         /* Rocket-pack supers: lift off, then the stick steers. Gravity is skipped
            while the pack is active. Pitches stay in update_stephen_pack_flights. */
         if (m->pack) {
@@ -195,16 +202,19 @@ static inline int body_step(Body *body, const Character *character,
             }
         }
         /* leap_vy moves (uppercut) already left the ground on the start tick.
-           Other leaps rise when they become active. */
-        if (m->leap && !m->leap_vy && !m->crouch && f == m->startup && body->y == 0) {
+           Other leaps rise when they become active. A ride never jumps. */
+        if (m->leap && !m->ride && !m->leap_vy && !m->crouch && f == m->startup && body->y == 0) {
             int vy = jump_vel(character);
             if (vy > 0) body->vy = vy;
         }
         int leap_from = m->leap_vy ? 0 : m->startup;
-        if (m->leap && f >= leap_from && f < m->startup + m->active + m->recover)
+        if (!m->ride && m->leap && f >= leap_from && f < m->startup + m->active + m->recover)
             body->vx = body->face * m->leap;
-        /* pack pitches are fired by update_stephen_pack_flights, not EV_SPAWN */
-        if (f == m->startup && !m->pack && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
+        /* pack pitches are fired by update_stephen_pack_flights, not EV_SPAWN.
+           A ride keeps swinging for the whole dash so newcomers in the path get hit. */
+        if (m->ride && f >= m->startup && f < m->startup + m->active)
+            ev |= EV_MELEE;
+        else if (f == m->startup && !m->pack && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
         else if (!m->proj_speed && !m->ship && !m->pack && (m->dmg || m->boom) && !body->hit
                  && f >= m->startup && f < m->startup + m->active) ev |= EV_MELEE;
         if (f >= m->startup + m->active + m->recover) body->move = -1;
@@ -281,7 +291,11 @@ static inline int body_step(Body *body, const Character *character,
                 if (m->invuln)
                     body->grace = m->startup + m->active + m->recover;
                 /* spin_slam leaps only after a successful grab (server melee). */
-                if (m->leap_vy && !m->spin_slam) {
+                if (m->ride) {
+                    body->y = 0;
+                    body->vy = 0;
+                    body->vx = body->face * m->ride;
+                } else if (m->leap_vy && !m->spin_slam) {
                     body->vy = m->leap_vy; /* leave the ground on this tick */
                     if (m->leap) body->vx = body->face * m->leap;
                 } else if (body->y == 0) body->vx = 0;
@@ -291,6 +305,20 @@ static inline int body_step(Body *body, const Character *character,
 
     /* Apply movement, clamped to the stage */
     body->x = hi(character->w / 2, lo(STAGE_W - character->w / 2, body->x + body->vx));
+    /* A ride that has reached the wall it is running toward starts recovery. */
+    if (body->move >= 0) {
+        const Move *rm = &character->moves[body->move];
+        if (rm->ride && body->frame > rm->startup &&
+            body->frame < rm->startup + rm->active) {
+            int half = character->w / 2;
+            int at_edge = (body->face > 0 && body->x >= STAGE_W - half) ||
+                          (body->face < 0 && body->x <= half);
+            if (at_edge) {
+                body->frame = rm->startup + rm->active;
+                body->vx = 0;
+            }
+        }
+    }
     body->y += body->vy;
     /* Pack flight ignores gravity; the stick sets vx/vy. Recover falls normally. */
     {
@@ -319,7 +347,8 @@ static inline int body_step(Body *body, const Character *character,
         body->y = body->vy = 0;
         if (body->move >= 0) {
             const Move *lm = &character->moves[body->move];
-            if (!lm->leap) body->vx = 0;
+            if (!lm->leap && !(lm->ride && body->frame <= lm->startup + lm->active))
+                body->vx = 0;
             if (lm->air) body->move = -1; /* landing ends a jump attack */
         }
         if (character->fuel) body->fuel = lo(character->fuel, body->fuel + FUEL_REGEN);

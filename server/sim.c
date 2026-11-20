@@ -107,6 +107,11 @@ static void update_player(int i)
 
     int ev = body_step(&player->body, character, player->in, look, cmd, nearfoe);
 
+    /* First tick of a ride: nobody has been whipped yet. */
+    if (player->body.move >= 0 && player->body.frame == 1 &&
+        character->moves[player->body.move].ride)
+        player->ride_mask = 0;
+
     if (ev & EV_SPAWN) {
         const Move *move = &character->moves[player->body.move];
         /* Pack pitches are fired in update_stephen_pack_flights, not here. */

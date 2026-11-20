@@ -317,6 +317,31 @@ void melee(int player_index, const Move *move)
     Player *player = &players[player_index];
     const Character *character = &chars[player->s_character];
 
+    /* Lion ride: hurt each foe in the whip once, and keep checking on later ticks. */
+    if (move->ride) {
+        int player_x0 = player->body.x + player->body.face * character->w / 2;
+        int player_x1 = player_x0 + player->body.face * move->reach;
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            Player *nearby = &players[i];
+            const Character *nearby_ch = &chars[nearby->s_character];
+            if (i == player_index || !fighting(nearby) || nearby->body.grace)
+                continue;
+            if (player->ride_mask & (1u << i))
+                continue;
+            if (!overlap(lo(player_x0, player_x1), hi(player_x0, player_x1),
+                         player->body.y + move->y,
+                         player->body.y + move->y + move->h,
+                         nearby->body.x - nearby_ch->w / 2,
+                         nearby->body.x + nearby_ch->w / 2,
+                         nearby->body.y,
+                         hurt_top(nearby, nearby_ch)))
+                continue;
+            hurt(player, nearby, move, player->body.face);
+            player->ride_mask |= (1u << i);
+        }
+        return;
+    }
+
     /* Point-blank boom (e.g. chicken barf uses BOOM_BARF). */
     if (move->boom) {
         area_damage(player_index, player->body.x,
