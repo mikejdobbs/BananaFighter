@@ -307,6 +307,14 @@ static void pick(const Fig *f, int *row, int *col)
             else if (t < (S * 2) / 3) *col = 1;
             else if (t < S) *col = 2;
             else *col = 3;
+        } else if (m->ride && m->anim == A_SUPER) {
+            /* Dance/ride supers: cycle the mid cells so the dash reads as spinning. */
+            int S = m->startup > 0 ? m->startup : 1;
+            int A = m->active > 0 ? m->active : 1;
+            int t = a->t;
+            if (t < S) *col = t * 2 / S;
+            else if (t < S + A) *col = 2 + ((t - S) / 3) % 4;
+            else *col = 4 + ((t - S - A) * 2 / (m->recover > 0 ? m->recover : 1) > 1 ? 1 : 0);
         } else if (m->leap_vy && f->y > 0) *col = 2;
         else if (m->leap && f->y > 40) *col = 4;
         else if (m->leap && f->y > 12) *col = 3;

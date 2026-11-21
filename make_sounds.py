@@ -689,7 +689,7 @@ def ph(*pairs):
 # Order matches chars[] in config.h (plus stadium first).
 FIGHT_TRACKS = (
     'stadium', 'slurpy', 'alien', 'rump', 'jv', 'kammy',
-    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev',
+    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev', 'rose',
 )
 
 # Expanded arcade recipes: 16-bar forms, real phrases, stereo FX.
@@ -921,6 +921,25 @@ FIGHT_RECIPES = {
         counter_B=ph((57, 4), (60, 4), (55, 4), (57, 4), (53, 8), (57, 8)),
         vols=dict(kick=0.56, snare=0.42, hat=0.22, bass=0.28, pad=0.16, lead=0.19, arp=0.09, counter=0.10),
         delay_beats=0.75, delay_mix=0.18, reverb_mix=0.16, accent=None,
+    ),
+    'rose': dict(  # crystalline ice waltz / sparkling arps
+        bpm=134, bars=16,
+        chords=[(61, 'maj'), (58, 'min'), (56, 'maj'), (63, 'maj'),
+                (61, 'maj'), (58, 'min'), (56, 'maj'), (61, 'maj'),
+                (61, 'add9'), (58, 'min7'), (56, 'maj'), (63, 'dom7'),
+                (61, 'maj'), (58, 'min'), (56, 'maj'), (61, 'maj')],
+        bass_roots=[49, 46, 44, 51, 49, 46, 44, 49, 49, 46, 44, 51, 49, 46, 44, 49],
+        bass_pat=(1, 0, 0, 1, 0, 1, 0, 0),
+        kick_pat=(1, 0, 0, 0, 1, 0, 0, 0),
+        snare_pat=(0, 0, 1, 0, 0, 0, 1, 0),
+        hat_pat=(1, 0, 1, 1, 1, 0, 1, 0),
+        bass_style='sin', pad_style='sin', lead_style='tri', snare_fn='clap',
+        arp_pat=(0, 1, 2, 1, 2, 0, 1, 2), arp_up=1, arp_style='sin',
+        lead_A=ph((73, 2), (76, 2), (80, 4), (78, 2), (76, 2), (73, 4), (71, 4), (73, 4), (76, 8)),
+        lead_B=ph((80, 2), (83, 2), (80, 2), (76, 2), (78, 4), (80, 4), (76, 4), (73, 4), (71, 8)),
+        counter_B=ph((61, 4), (64, 4), (68, 4), (64, 4), (61, 8), (56, 8)),
+        vols=dict(kick=0.44, snare=0.38, hat=0.26, bass=0.24, pad=0.20, lead=0.18, arp=0.14, counter=0.11),
+        delay_beats=1.0, delay_mix=0.24, reverb_mix=0.26, accent='toy',
     ),
 }
 

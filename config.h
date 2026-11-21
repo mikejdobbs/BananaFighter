@@ -2,7 +2,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define BF_VERSION    "1.0.4"   /* client/server must match (handshake V line) */
+#define BF_VERSION    "1.0.5"   /* client/server must match (handshake V line) */
 #define PORT          7777
 #define DISCOVER_PORT (PORT + 1) /* LAN server beacon (UDP broadcast) */
 #define DISCOVER_MAGIC "BFDISC"
@@ -397,6 +397,33 @@ static const Character chars[] = {
         { .name="hair whip", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=180, .y=-180, .h=360, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
         /* Grounded dash across the stage. ride speed hits each foe in the path once. */
         { .name="lion ride", .input=IN_HK, .cmd=CMD_HCF, .startup=8, .active=90, .recover=18, .dmg=110, .kb=36, .reach=100, .y=0, .h=180, .invuln=1, .knockdown=1, .cost=55, .anim=A_SUPER, .ride=16 },
+    }},
+    { .name = "Rose", .hp = 880, .lives = 3, .speed = 7, .jump = 30, .w = 52, .h = 150, .moves = {
+        { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=44, .y=90, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=44, .kb=10, .reach=56, .y=88, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=72, .kb=16, .reach=66, .y=86, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=24, .kb=6, .reach=48, .y=16, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=50, .kb=12, .reach=70, .y=10, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=80, .kb=18, .reach=84, .y=22, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=22, .kb=5, .reach=44, .y=42, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=44, .kb=10, .reach=56, .y=40, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=72, .kb=16, .reach=66, .y=38, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=24, .kb=6, .reach=48, .y=6, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=50, .kb=12, .reach=70, .y=4, .h=40 },
+        { .name="crouch sweep", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=80, .kb=18, .reach=90, .y=0, .h=32 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=30, .kb=7, .reach=46, .y=18, .h=48 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=40, .kb=9, .reach=48, .y=18, .h=48 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=54, .kb=12, .reach=52, .y=18, .h=48 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=36, .kb=9, .reach=54, .y=-40, .h=72 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=50, .kb=11, .reach=56, .y=-40, .h=72 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=68, .kb=15, .reach=60, .y=-40, .h=72 },
+        /* Ice bolt projectile. */
+        { .name="ice bolt", .input=IN_P, .cmd=CMD_QCF, .startup=10, .active=1, .recover=20, .dmg=48, .kb=8, .y=96, .h=20, .proj_speed=14, .proj_life=72, .proj_x=62, .spin=1, .anim=A_CAST },
+        /* Ice blast from the hand: tall leaping area hit. */
+        { .name="ice blast", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=160, .y=-200, .h=380, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
+        /* Dance dash across the stage blasting ice at everyone in her path. */
+        { .name="ice dance", .input=IN_HK, .cmd=CMD_HCF, .startup=8, .active=90, .recover=18, .dmg=110, .kb=36, .reach=120, .y=-40, .h=220, .invuln=1, .knockdown=1, .cost=55, .anim=A_SUPER, .ride=14 },
     }},
 };
 
