@@ -70,10 +70,13 @@ static inline int detect_cmd(const int *w, int n, int face)
         motion(w, n, face, "fubd", CMD_RECENT + 10))
         return CMD_360;
     if (motion(w, n, face, "bBdDf", CMD_RECENT)) return CMD_HCF;
-    /* Forward, down, forward (dragon punch). Strict steps so a QCF roll cannot
-       count as FDF: toward-only, down-only, then toward (down may stay held).
-       Either facing works; the attack still faces the opponent. Before QCF. */
-    if (motion(w, n, face, "svS", CMD_RECENT + 8) || motion(w, n, -face, "svS", CMD_RECENT + 8))
+    /* Forward, down, forward (dragon punch / "straight down straight").
+       Toward-only first so a plain QCF (d,df,f) does not count as FDF.
+       Accept pure down (v) or down-forward (D) in the middle — players often
+       roll through the corner (f,df,f) instead of tapping clean down.
+       Final toward may keep down held (S). Either facing. Before QCF. */
+    if (motion(w, n, face, "svS", CMD_RECENT + 8) || motion(w, n, -face, "svS", CMD_RECENT + 8) ||
+        motion(w, n, face, "sDS", CMD_RECENT + 8) || motion(w, n, -face, "sDS", CMD_RECENT + 8))
         return CMD_FDF;
     if (motion(w, n, face, "dDf", CMD_RECENT)) return CMD_QCF;
     return CMD_NONE;
@@ -139,7 +142,7 @@ static inline int move_row(const Move *m)
                        m->input == IN_LK ? 3 : m->input == IN_MK ? 4 : 5;
         return (m->crouch ? 12 : 0) + strength;
     }
-    if (m->pack || m->ship || m->cost >= 60) return 8;
+    if (m->pack || m->ship || m->rain || m->cost >= 60) return 8;
     return m->proj_speed ? 6 : 7;
 }
 
@@ -214,9 +217,11 @@ static inline int body_step(Body *body, const Character *character,
            A ride keeps swinging for the whole dash so newcomers in the path get hit. */
         if (m->ride && f >= m->startup && f < m->startup + m->active)
             ev |= EV_MELEE;
-        else if (f == m->startup && !m->pack && (m->proj_speed || m->ship)) ev |= EV_SPAWN;
-        else if (!m->proj_speed && !m->ship && !m->pack && (m->dmg || m->boom) && !body->hit
-                 && f >= m->startup && f < m->startup + m->active) ev |= EV_MELEE;
+        else if (f == m->startup && !m->pack && (m->proj_speed || m->ship || m->rain))
+            ev |= EV_SPAWN;
+        else if (!m->proj_speed && !m->ship && !m->pack && !m->rain && (m->dmg || m->boom)
+                 && !body->hit && f >= m->startup && f < m->startup + m->active)
+            ev |= EV_MELEE;
         if (f >= m->startup + m->active + m->recover) body->move = -1;
 
     } else { /* Read movement and attack input */
@@ -281,7 +286,9 @@ static inline int body_step(Body *body, const Character *character,
                 /* cmd2 is optional. An unset cmd2 is 0, which is also CMD_NONE,
                    so it must not count as a match when no motion was entered. */
                 if (m->cmd && cmd != m->cmd && !(m->cmd2 && cmd == m->cmd2)) continue;
-                if (m->throw && !nearfoe) continue; /* a throw only comes out within grab range */
+                /* Plain grabs need range. Command throws (Toadie gulp, etc.) still
+                   start out of range so the motion is not eaten — they whiff on active. */
+                if (m->throw && !m->cmd && !nearfoe) continue;
 
                 body->move = k; body->frame = 0; body->hit = 0; body->flying = 0;
                 body->block = 0;                          /* an attack replaces blocking */

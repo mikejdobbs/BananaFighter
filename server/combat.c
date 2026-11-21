@@ -123,6 +123,37 @@ void call_ship(Player *player, int owner, const Move *move)
                    .m = move};
 }
 
+/* Rain exploding bombs across the stage from the sky (no ship). */
+void call_rain(Player *player, int owner, const Move *move)
+{
+    (void)player;
+    int n = move->rain > 0 ? move->rain : 8;
+    int spawned = 0;
+    for (int i = 0; i < MAXPROJ && spawned < n; i++) {
+        if (projectiles[i].on)
+            continue;
+        /* Spread across the stage; stagger height so they land in a cascade. */
+        int x = STAGE_W * (spawned + 1) / (n + 1);
+        x += ((spawned * 37) % 51) - 25;
+        if (x < 24)
+            x = 24;
+        if (x > STAGE_W - 24)
+            x = STAGE_W - 24;
+        int y = SHIP_Y + 30 + (spawned % 5) * 42;
+        projectiles[i] = (Proj){.on = 1,
+                                .owner = owner,
+                                .x = x,
+                                .y = y,
+                                .vx = (spawned % 5) - 2,
+                                .vy = 0,
+                                .grav = BOMB_GRAV,
+                                .bomb = 1,
+                                .life = 400,
+                                .m = move};
+        spawned++;
+    }
+}
+
 /* Drop one bomb from a flying ship. */
 static void drop_bomb(const Ship *ship)
 {

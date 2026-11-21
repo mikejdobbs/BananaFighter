@@ -144,6 +144,7 @@ int  server_embed_fight_intro_held(void);
 /* combat.c */
 void spawn(Player *p, int owner, const Move *m);
 void call_ship(Player *p, int owner, const Move *m);
+void call_rain(Player *p, int owner, const Move *m);
 void melee(int i, const Move *m);
 void update_mike_uppercut(void);
 void update_stephen_pack_flights(void);

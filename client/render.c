@@ -138,6 +138,15 @@ static int is_pack_st(int ch, int st)
     return m->name && m->pack;
 }
 
+/* Full-stage melee tongue whip (Toadie): no projectile, reach spans STAGE_W. */
+static int is_tongue_whip(int ch, int st)
+{
+    if (st < 0 || st >= MAXMOVES || ch < 0 || ch >= NCHARS)
+        return 0;
+    const Move *m = &chars[ch].moves[st];
+    return m->name && !m->proj_speed && m->reach >= STAGE_W;
+}
+
 /* Effective fighter state: predicted for self, snapshot for others */
 static Fig eff(int i)
 {
@@ -480,6 +489,44 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
         SDL_RenderTextureRotated(renderer, t, &msrc, &mdst, 0, NULL, flip);
     }
 
+    /* Toadie tongue whip: stretch a pink tongue from the mouth to the stage edge. */
+    if (is_tongue_whip(f->ch, f->st)) {
+        const Move *m = &c->moves[f->st];
+        const Anim *a = &an[f->slot];
+        int S = m->startup > 0 ? m->startup : 1;
+        int A = m->active > 0 ? m->active : 1;
+        float mouth_x = xc + f->face * cs * 0.32f;
+        float mouth_y = dst.y + cs * 0.30f;
+        float end_x = f->face > 0 ? (float)SW : 0.0f;
+        float full = end_x - mouth_x;
+        float extend;
+        if (a->t < S)
+            extend = full * (float)(a->t + 1) / (float)S; /* whip out during startup */
+        else if (a->t < S + A)
+            extend = full; /* hold across the screen on active frames */
+        else {
+            int R = m->recover > 0 ? m->recover : 1;
+            int u = a->t - S - A;
+            extend = full * (1.0f - (float)u / (float)R);
+            if (extend < 0)
+                extend = 0;
+        }
+        float tip_x = mouth_x + extend;
+        float x0 = mouth_x < tip_x ? mouth_x : tip_x;
+        float tw = mouth_x < tip_x ? tip_x - mouth_x : mouth_x - tip_x;
+        float th = m->h * SCALE * 0.35f;
+        if (th < 10.0f)
+            th = 10.0f;
+        if (tw > 4.0f) {
+            box(x0, mouth_y - th * 0.35f, tw, th * 0.7f, 220, 70, 90, 230);
+            box(x0, mouth_y - th * 0.18f, tw, th * 0.36f, 255, 120, 140, 220);
+            /* forked tip */
+            float fx = f->face > 0 ? tip_x - 6.0f : tip_x - 2.0f;
+            box(fx, mouth_y - th * 0.85f, 10.0f, th * 0.45f, 230, 80, 100, 240);
+            box(fx, mouth_y + th * 0.15f, 10.0f, th * 0.45f, 230, 80, 100, 240);
+        }
+    }
+
     const Uint8 *pc = pal[f->slot % MAX_PLAYERS];                   /* slot marker above the head */
     float mark_y = (f->st == -7 || f->st == -8) ? GROUND - f->y * SCALE - 10 : dst.y + cs * 0.02f;
     box(xc - 7, mark_y, 14, 6, pc[0], pc[1], pc[2], f->invis ? 90 : 255);
@@ -569,7 +616,7 @@ static int bomb_is_ball(const Shot *s)
         return 0;
     for (int k = 0; k < MAXMOVES && chars[ch].moves[k].name; k++) {
         const Move *m = &chars[ch].moves[k];
-        if (m->spin && (m->ship || m->pack))
+        if (m->spin && (m->ship || m->pack || m->rain))
             return 1;
     }
     return 0;

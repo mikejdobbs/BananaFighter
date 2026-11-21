@@ -116,7 +116,9 @@ static void update_player(int i)
         const Move *move = &character->moves[player->body.move];
         /* Pack pitches are fired in update_stephen_pack_flights, not here. */
         if (!move->pack) {
-            if (move->ship)
+            if (move->rain)
+                call_rain(player, i, move);
+            else if (move->ship)
                 call_ship(player, i, move);
             else
                 spawn(player, i, move);

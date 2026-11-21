@@ -689,7 +689,7 @@ def ph(*pairs):
 # Order matches chars[] in config.h (plus stadium first).
 FIGHT_TRACKS = (
     'stadium', 'slurpy', 'alien', 'rump', 'jv', 'kammy',
-    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev', 'rose',
+    'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev', 'rose', 'toadie',
 )
 
 # Expanded arcade recipes: 16-bar forms, real phrases, stereo FX.
@@ -940,6 +940,25 @@ FIGHT_RECIPES = {
         counter_B=ph((61, 4), (64, 4), (68, 4), (64, 4), (61, 8), (56, 8)),
         vols=dict(kick=0.44, snare=0.38, hat=0.26, bass=0.24, pad=0.20, lead=0.18, arp=0.14, counter=0.11),
         delay_beats=1.0, delay_mix=0.24, reverb_mix=0.26, accent='toy',
+    ),
+    'toadie': dict(  # swamp bounce: rubbery bass, croak-y toy accents
+        bpm=126, bars=16,
+        chords=[(55, 'maj'), (62, 'min'), (57, 'maj'), (60, 'maj'),
+                (55, 'maj'), (62, 'min'), (57, 'maj'), (55, 'maj'),
+                (55, 'add9'), (62, 'min7'), (57, 'maj'), (60, 'dom7'),
+                (55, 'maj'), (62, 'min'), (57, 'maj'), (55, 'maj')],
+        bass_roots=[43, 50, 45, 48, 43, 50, 45, 43, 43, 50, 45, 48, 43, 50, 45, 43],
+        bass_pat=(1, 0, 1, 0, 1, 1, 0, 1),
+        kick_pat=(1, 0, 0, 1, 1, 0, 0, 0),
+        snare_pat=(0, 0, 1, 0, 0, 0, 1, 0),
+        hat_pat=(1, 0, 1, 0, 1, 0, 1, 0),
+        bass_style='tri', pad_style='tri', lead_style='sq', snare_fn='clap',
+        arp_pat=(0, 2, 1, 0, 2, 1, 2, 0), arp_up=0, arp_style='tri',
+        lead_A=ph((67, 2), (70, 2), (74, 4), (72, 2), (70, 2), (67, 4), (65, 4), (67, 4), (70, 8)),
+        lead_B=ph((74, 2), (77, 2), (74, 2), (70, 2), (72, 4), (74, 4), (70, 4), (67, 4), (65, 8)),
+        counter_B=ph((55, 4), (58, 4), (62, 4), (58, 4), (55, 8), (50, 8)),
+        vols=dict(kick=0.52, snare=0.40, hat=0.24, bass=0.28, pad=0.16, lead=0.17, arp=0.11, counter=0.10),
+        delay_beats=0.75, delay_mix=0.16, reverb_mix=0.18, accent='toy',
     ),
 }
 
