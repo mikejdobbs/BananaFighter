@@ -118,6 +118,8 @@ static void update_player(int i)
         if (!move->pack) {
             if (move->rain)
                 call_rain(player, i, move);
+            else if (move->hat)
+                call_hat(player, i, move);
             else if (move->ship)
                 call_ship(player, i, move);
             else

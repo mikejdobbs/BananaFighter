@@ -40,6 +40,7 @@ typedef struct {
     Body body;
     bf_socket_t fd;
     int ready, in_match, s_character, hp, lives, spawn;
+    int pick_random; /* 1 = lobby chose Random; restored after the match */
     int in, num_ack_by_server, q_head, q_num, q[INPUT_QMAX];   /* input queue; ack = inputs consumed */
     int in_history[32]; unsigned in_history_n;                 /* recent consumed inputs, for motion commands */
     int carry_slot;             /* victim slot while spin_slam carry is active */
@@ -85,14 +86,17 @@ typedef struct {
     const Move *m;      /* the move that fired it: source of damage and knockback */
 } Proj;
 
-/* A called ship crossing the stage and dropping bombs. At most one per owner. */
+/* A called ship crossing the stage and dropping bombs. At most one per owner.
+   Hat mode (move->hat): bouncing mitre with y/vy; contact damage; hit_mask per pass. */
 typedef struct {
     int on;             /* 1 = flying */
     int owner;          /* slot of the fighter who called it */
     int x, vx;          /* position; velocity per tick (its sign is the flight direction) */
-    int drops;          /* bombs still to drop */
+    int y, vy;          /* altitude / vertical speed (hat bounce; ships use y=SHIP_Y) */
+    int drops;          /* bombs still to drop (hat: remaining life ticks) */
     int cd;             /* ticks until the next bomb */
-    const Move *m;      /* the calling move: dmg and kb apply to each bomb */
+    unsigned hit_mask;  /* hat: bit per slot already hit this bounce pass */
+    const Move *m;      /* the calling move: dmg and kb apply to each bomb / hat hit */
 } Ship;
 
 /* An explosion effect. Damage is dealt when the bomb detonates; this only tells clients
@@ -144,6 +148,7 @@ int  server_embed_fight_intro_held(void);
 /* combat.c */
 void spawn(Player *p, int owner, const Move *m);
 void call_ship(Player *p, int owner, const Move *m);
+void call_hat(Player *p, int owner, const Move *m);
 void call_rain(Player *p, int owner, const Move *m);
 void melee(int i, const Move *m);
 void update_mike_uppercut(void);

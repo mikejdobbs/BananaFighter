@@ -1,0 +1,12 @@
+"""Popearoni's sheet is composed from the painted poses in tools/refs/popearoni.
+
+Run tools/compose_popearoni_sheet.py (this file just forwards).
+"""
+
+import os
+import runpy
+
+runpy.run_path(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "compose_popearoni_sheet.py"),
+    run_name="__main__",
+)

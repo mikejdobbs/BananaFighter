@@ -690,6 +690,7 @@ def ph(*pairs):
 FIGHT_TRACKS = (
     'stadium', 'slurpy', 'alien', 'rump', 'jv', 'kammy',
     'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev', 'rose', 'toadie',
+    'popearoni',
 )
 
 # Expanded arcade recipes: 16-bar forms, real phrases, stereo FX.
@@ -959,6 +960,25 @@ FIGHT_RECIPES = {
         counter_B=ph((55, 4), (58, 4), (62, 4), (58, 4), (55, 8), (50, 8)),
         vols=dict(kick=0.52, snare=0.40, hat=0.24, bass=0.28, pad=0.16, lead=0.17, arp=0.11, counter=0.10),
         delay_beats=0.75, delay_mix=0.16, reverb_mix=0.18, accent='toy',
+    ),
+    'popearoni': dict(  # solemn arcade hymn: organ pad, processional bass
+        bpm=118, bars=16,
+        chords=[(60, 'maj'), (57, 'min'), (53, 'maj'), (55, 'maj'),
+                (60, 'maj'), (57, 'min'), (62, 'min'), (55, 'maj'),
+                (60, 'add9'), (57, 'min7'), (53, 'maj'), (55, 'dom7'),
+                (60, 'maj'), (65, 'maj'), (55, 'maj'), (60, 'maj')],
+        bass_roots=[48, 45, 41, 43, 48, 45, 50, 43, 48, 45, 41, 43, 48, 53, 43, 48],
+        bass_pat=(1, 0, 0, 1, 1, 0, 0, 0),
+        kick_pat=(1, 0, 0, 0, 1, 0, 0, 1),
+        snare_pat=(0, 0, 1, 0, 0, 0, 1, 0),
+        hat_pat=(1, 0, 1, 0, 1, 0, 1, 0),
+        bass_style='sin', pad_style='saw', lead_style='sin', snare_fn='snare',
+        arp_pat=(0, 1, 2, 4, 2, 1, 0, 2), arp_up=1, arp_style='sin',
+        lead_A=ph((72, 4), (76, 4), (79, 4), (76, 4), (74, 4), (72, 4), (67, 4), (72, 8)),
+        lead_B=ph((79, 4), (81, 4), (79, 4), (76, 4), (74, 4), (72, 4), (69, 4), (67, 8)),
+        counter_B=ph((60, 8), (57, 8), (53, 8), (55, 8)),
+        vols=dict(kick=0.48, snare=0.36, hat=0.18, bass=0.26, pad=0.22, lead=0.16, arp=0.10, counter=0.12),
+        delay_beats=1.0, delay_mix=0.20, reverb_mix=0.28, accent=None,
     ),
 }
 

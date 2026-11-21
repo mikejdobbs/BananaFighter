@@ -222,7 +222,7 @@ Client commands (lobby only unless noted):
 |---|---|
 | `B <char> <ai>` | add a bot with that character and AI |
 | `X <slot>` | remove a bot |
-| `J <char>` | hover/pick a character (not allowed once ready) |
+| `J <char>` | hover/pick a character; `J NCHARS` is Random (rolled at match start). Not allowed once ready |
 | `R` | toggle ready |
 
 While in the lobby the server sends `L {U slot char ready bot}...` each tick (`bot` is 0 for humans, otherwise

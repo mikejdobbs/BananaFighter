@@ -88,7 +88,7 @@ typedef struct {
   int owner, x, y;
 } Shot; /* shots and bombs */
 typedef struct {
-  int owner, x, vx;
+  int owner, x, y, vx;
 } Ship;
 typedef struct {
   int x, y, t;

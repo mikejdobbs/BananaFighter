@@ -118,9 +118,38 @@ void call_ship(Player *player, int owner, const Move *move)
                    .owner = owner,
                    .x = dir > 0 ? -SHIP_MARGIN : STAGE_W + SHIP_MARGIN,
                    .vx = dir * SHIP_SPEED,
+                   .y = SHIP_Y,
+                   .vy = 0,
                    .drops = move->ship,
                    .cd = 10,
+                   .hit_mask = 0,
                    .m = move};
+}
+
+/* Launch the caller's mitre: bounces around the stage dealing contact damage. */
+void call_hat(Player *player, int owner, const Move *move)
+{
+    Ship *ship = &ships[owner];
+    if (ship->on)
+        return;
+    int dir = player->body.face;
+    int y0 = player->body.y + chars[player->s_character].h - 20;
+    if (y0 < HAT_Y_MIN)
+        y0 = HAT_Y_MIN;
+    if (y0 > SHIP_Y)
+        y0 = SHIP_Y;
+    *ship = (Ship){.on = 1,
+                   .owner = owner,
+                   .x = player->body.x + dir * 40,
+                   .vx = dir * HAT_SPEED,
+                   .y = y0,
+                   .vy = HAT_VY0,
+                   .drops = HAT_LIFE,
+                   .cd = 0,
+                   .hit_mask = 0,
+                   .m = move};
+    /* Invulnerable for the whole hat flight (move-frame invuln alone is too short). */
+    player->body.grace = HAT_LIFE + 8;
 }
 
 /* Rain exploding bombs across the stage from the sky (no ship). */
@@ -690,13 +719,63 @@ void update_projectiles(void)
     }
 }
 
-/* Advance ships (drop bombs / fire shots) and age explosion FX. */
+/* Advance ships (drop bombs / fire shots / bounce hats) and age explosion FX. */
 void update_ships(void)
 {
     for (int i = 0; i < MAX_PLAYERS; i++) {
         Ship *ship = &ships[i];
         if (!ship->on)
             continue;
+
+        /* Holy hat: bounce around the stage and contact-damage foes. */
+        if (ship->m && ship->m->hat) {
+            int prev_vx = ship->vx;
+            ship->x += ship->vx;
+            ship->y += ship->vy;
+            if (ship->x < HAT_HALF) {
+                ship->x = HAT_HALF;
+                ship->vx = -ship->vx;
+            } else if (ship->x > STAGE_W - HAT_HALF) {
+                ship->x = STAGE_W - HAT_HALF;
+                ship->vx = -ship->vx;
+            }
+            if (ship->y < HAT_Y_MIN) {
+                ship->y = HAT_Y_MIN;
+                ship->vy = -ship->vy;
+            } else if (ship->y > SHIP_Y) {
+                ship->y = SHIP_Y;
+                ship->vy = -ship->vy;
+            }
+            /* New horizontal pass: allow re-hits. */
+            if ((prev_vx > 0) != (ship->vx > 0))
+                ship->hit_mask = 0;
+
+            if (--ship->drops <= 0) {
+                ship->on = 0;
+                continue;
+            }
+            /* Keep owner invulnerable while the hat is airborne. */
+            if (fighting(&players[ship->owner]) && players[ship->owner].body.grace < 2)
+                players[ship->owner].body.grace = 2;
+
+            for (int t = 0; t < MAX_PLAYERS; t++) {
+                Player *target = &players[t];
+                const Character *tch = &chars[target->s_character];
+                if (t == ship->owner || !fighting(target) || target->body.grace)
+                    continue;
+                if (ship->hit_mask & (1u << t))
+                    continue;
+                if (!overlap(ship->x - HAT_HALF, ship->x + HAT_HALF,
+                             ship->y - HAT_HALF, ship->y + HAT_HALF,
+                             target->body.x - tch->w / 2, target->body.x + tch->w / 2,
+                             target->body.y, hurt_top(target, tch)))
+                    continue;
+                hurt(&players[ship->owner], target, ship->m, ship->vx > 0 ? 1 : -1);
+                ship->hit_mask |= (1u << t);
+            }
+            continue;
+        }
+
         ship->x += ship->vx;
         if (ship->x < -SHIP_MARGIN - 50 || ship->x > STAGE_W + SHIP_MARGIN + 50) {
             ship->on = 0;

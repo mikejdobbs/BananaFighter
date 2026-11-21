@@ -2,7 +2,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define BF_VERSION    "1.0.6"   /* client/server must match (handshake V line) */
+#define BF_VERSION    "1.0.7"   /* client/server must match (handshake V line) */
 #define PORT          7777
 #define DISCOVER_PORT (PORT + 1) /* LAN server beacon (UDP broadcast) */
 #define DISCOVER_MAGIC "BFDISC"
@@ -44,6 +44,11 @@
 #define SHIP_SPEED    10        /* units per tick */
 #define SHIP_DROP     18        /* ticks between bombs */
 #define SHIP_MARGIN   100       /* how far off-stage a ship starts */
+#define HAT_LIFE      180       /* ticks a holy-hat bounce lasts */
+#define HAT_SPEED     14        /* horizontal speed of the bouncing hat */
+#define HAT_VY0       10        /* initial upward velocity */
+#define HAT_Y_MIN     80        /* bounce floor (stage units above ground) */
+#define HAT_HALF      36        /* contact half-size for hat vs fighter */
 #define BOMB_GRAV     1
 #define BOMB_R        90        /* explosion radius */
 #define BOOM_TICKS    14        /* how long the explosion effect lasts */
@@ -87,6 +92,8 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
            With pack: number of exploding pitches fired while flying (no ship entity).
    pack:   body-controlled rocket-pack flight: the player steers and pitches exploding shots.
    rain:   spawn this many falling bombs across the stage (no ship). dmg/kb per bomb.
+   hat:    launches the caller's hat as a bouncing ship that contact-damages foes; owner
+           stays invulnerable while the hat is flying (ROW_SHIP art).
    boom:   on the active frame, area damage at the attacker (like a bomb; owner immune).
    boom_r: AOE radius for boom (0 = BOMB_R).
    proj_x: how far in front of the body center a projectile spawns (0 = the body edge).
@@ -105,7 +112,7 @@ typedef struct {
     int spread, spread_vy;
     int invis, invuln, knockdown, throw, spin_slam, combo_hits, bucket_burst, cost;
     int ship, pack, boom, boom_r, spin, anim;
-    int leap, leap_vy, ride, rain;
+    int leap, leap_vy, ride, rain, hat;
 } Move;
 
 #define SPIN_SLAM_TICKS  56 /* max ticks airborne before forced slam */
@@ -454,8 +461,38 @@ static const Character chars[] = {
         /* Raining exploding toads across the whole stage (no bomber ship). */
         { .name="toad storm", .input=IN_HK, .cmd=CMD_HCF, .startup=12, .active=1, .recover=36, .dmg=48, .kb=22, .y=80, .h=20, .rain=14, .spin=1, .cost=55, .invuln=1, .anim=A_SUPER },
     }},
+    { .name = "Popearoni", .hp = 900, .lives = 3, .speed = 5, .jump = 21, .w = 56, .h = 158, .moves = {
+        { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=46, .y=90, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=88, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=74, .kb=16, .reach=66, .y=86, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=50, .y=14, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=72, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=80, .kb=18, .reach=84, .y=20, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=46, .y=42, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=46, .kb=10, .reach=58, .y=40, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=74, .kb=16, .reach=66, .y=38, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=50, .y=6, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=72, .y=4, .h=40 },
+        { .name="crouch sweep", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=80, .kb=18, .reach=90, .y=0, .h=32 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=32, .kb=7, .reach=48, .y=18, .h=48 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=42, .kb=9, .reach=50, .y=18, .h=48 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=56, .kb=12, .reach=54, .y=18, .h=48 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=38, .kb=9, .reach=56, .y=-40, .h=72 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=52, .kb=11, .reach=58, .y=-40, .h=72 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=70, .kb=15, .reach=62, .y=-40, .h=72 },
+        /* Spinning pepperoni pizza projectile. */
+        { .name="pepperoni pizza", .input=IN_P, .cmd=CMD_QCF, .startup=10, .active=1, .recover=20, .dmg=50, .kb=8, .y=100, .h=24, .proj_speed=12, .proj_life=70, .proj_x=66, .spin=1, .anim=A_CAST },
+        /* Demon form leaping uppercut. */
+        { .name="demon rising", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=12, .recover=26, .dmg=240, .kb=34, .reach=130, .y=-220, .h=400, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=4, .leap_vy=48 },
+        /* Mitre flies around the stage; owner invulnerable while it is airborne. */
+        { .name="holy hat", .input=IN_HK, .cmd=CMD_HCF, .startup=12, .active=1, .recover=30, .dmg=70, .kb=28, .hat=1, .cost=55, .invuln=1, .knockdown=1, .anim=A_SUPER },
+    }},
 };
 
 #define NCHARS (int)(sizeof chars / sizeof chars[0])
+/* Lobby-only pick: shown like a fighter cell. Server rolls 0..NCHARS-1 at match start. */
+#define CHAR_RANDOM NCHARS
+#define SEL_COUNT   (NCHARS + 1) /* fighter grid cells including Random */
 
 #endif

@@ -142,7 +142,7 @@ static inline int move_row(const Move *m)
                        m->input == IN_LK ? 3 : m->input == IN_MK ? 4 : 5;
         return (m->crouch ? 12 : 0) + strength;
     }
-    if (m->pack || m->ship || m->rain || m->cost >= 60) return 8;
+    if (m->pack || m->ship || m->rain || m->hat || m->cost >= 60) return 8;
     return m->proj_speed ? 6 : 7;
 }
 
@@ -217,9 +217,9 @@ static inline int body_step(Body *body, const Character *character,
            A ride keeps swinging for the whole dash so newcomers in the path get hit. */
         if (m->ride && f >= m->startup && f < m->startup + m->active)
             ev |= EV_MELEE;
-        else if (f == m->startup && !m->pack && (m->proj_speed || m->ship || m->rain))
+        else if (f == m->startup && !m->pack && (m->proj_speed || m->ship || m->rain || m->hat))
             ev |= EV_SPAWN;
-        else if (!m->proj_speed && !m->ship && !m->pack && !m->rain && (m->dmg || m->boom)
+        else if (!m->proj_speed && !m->ship && !m->pack && !m->rain && !m->hat && (m->dmg || m->boom)
                  && !body->hit && f >= m->startup && f < m->startup + m->active)
             ev |= EV_MELEE;
         if (f >= m->startup + m->active + m->recover) body->move = -1;

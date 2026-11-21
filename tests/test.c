@@ -15,7 +15,8 @@
  * The tests speak the same protocol as a real client:
  *   TCP:  after K, server sends "V version", client replies "V version", then
  *         server sends "Y slot names...", "A ais...", "U token"; client sends
- *         "J char", "R", "B char ai", "X slot"; server sends "L {U slot char ready bot}..."
+ *         "J char" (J NCHARS = Random), "R", "B char ai", "X slot";
+ *         server sends "L {U slot char ready bot}..."
  *   UDP:  client sends "H slot token" and "I slot token seq m0 m1 ...";
  *         server sends "S tick winner ack {P ...} ..." snapshots during a match.
  *
@@ -47,7 +48,7 @@
 #define SERVER_MAX_PLAYERS 10
 #define SERVER_UDP_PKT_MAX 1400
 #define SERVER_UDP_TIMEOUT_MS 5000
-#define SERVER_NCHARS 13
+#define SERVER_NCHARS 14
 #define TCP_LINE_BUFFER 4096
 #define MAX_TEST_CLIENTS 16
 
@@ -532,6 +533,36 @@ static void test_character_select(void) {
     tcp_send(c, "J banana\nHELLO\n\n");
     sleep_ms(150);
     CHECK(lobby_find(c, c->slot, 2, -1, 1000, NULL), "garbage changed the character");
+
+    /* J NCHARS selects Random (stays Random until match start). */
+    {
+        char cmd[32];
+        snprintf(cmd, sizeof cmd, "J %d\n", SERVER_NCHARS);
+        tcp_send(c, cmd);
+        CHECK(lobby_find(c, c->slot, SERVER_NCHARS, -1, 2000, NULL),
+              "J NCHARS did not select Random");
+    }
+
+    /* Bots can also lock Random. */
+    {
+        char cmd[32];
+        snprintf(cmd, sizeof cmd, "B %d 0\n", SERVER_NCHARS);
+        tcp_send(c, cmd);
+        sleep_ms(200);
+        char line[TCP_LINE_BUFFER];
+        LobbyEntry entries[SERVER_MAX_PLAYERS + 2];
+        int found_rand_bot = 0;
+        long long deadline = now_ms() + 1500;
+        while (now_ms() < deadline && !found_rand_bot) {
+            if (wait_for_prefix(c, "L", line, sizeof line, 300) != 1)
+                break;
+            int n = parse_lobby(line, entries, SERVER_MAX_PLAYERS + 2);
+            for (int i = 0; i < n; i++)
+                if (entries[i].bot && entries[i].character == SERVER_NCHARS)
+                    found_rand_bot = 1;
+        }
+        CHECK(found_rand_bot, "B NCHARS did not add a Random bot");
+    }
 }
 
 static void test_ready_toggle_and_lock(void) {

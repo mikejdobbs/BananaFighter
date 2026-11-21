@@ -385,7 +385,8 @@ static void parse(char *s)
         } else if (k == 'B' && nb < MAXPROJ) {
             BM[nb].owner = num(&s); BM[nb].x = num(&s); BM[nb].y = num(&s); nb++;
         } else if (k == 'Z' && nsh < MAX_PLAYERS) {
-            SHP[nsh].owner = num(&s); SHP[nsh].x = num(&s); SHP[nsh].vx = num(&s); nsh++;
+            SHP[nsh].owner = num(&s); SHP[nsh].x = num(&s); SHP[nsh].y = num(&s);
+            SHP[nsh].vx = num(&s); nsh++;
         } else if (k == 'X' && nex < MAXBOOM) {
             EX[nex].x = num(&s); EX[nex].y = num(&s); EX[nex].t = num(&s);
             EX[nex].kind = num(&s); EX[nex].owner = num(&s);

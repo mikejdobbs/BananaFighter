@@ -1,6 +1,27 @@
 #include "server.h"
 
 #include <stdio.h>
+#include <time.h>
+
+/* Match-start PRNG for resolving Random lobby picks. */
+static unsigned match_rng = 2463534242u;
+
+static unsigned match_rand(void)
+{
+    match_rng ^= match_rng << 13;
+    match_rng ^= match_rng >> 17;
+    match_rng ^= match_rng << 5;
+    return match_rng;
+}
+
+/* Roll a concrete fighter for a Random lobby pick (0..NCHARS-1). */
+static int roll_character(int slot)
+{
+    if (NCHARS <= 1)
+        return 0;
+    match_rng ^= (unsigned)slot * 0x9E3779B9u + (unsigned)time(NULL) + (unsigned)srv_tick;
+    return (int)(match_rand() % (unsigned)NCHARS);
+}
 
 Player players[MAX_PLAYERS];
 Proj   projectiles[MAXPROJ];
@@ -146,6 +167,16 @@ void check_start(void)
         if (!player_is_person_or_bot(player))
             continue;
 
+        /* Resolve Random picks now — lobby kept CHAR_RANDOM until this moment. */
+        if (player->s_character == CHAR_RANDOM || player->pick_random) {
+            player->pick_random = 1;
+            player->s_character = roll_character(player_index);
+            fprintf(stderr, "slot %d: Random -> %s\n", player_index,
+                    chars[player->s_character].name);
+        } else {
+            player->pick_random = 0;
+        }
+
         /* Enter the match with the selected character's starting lives. */
         player->in_match = 1;
         player->lives = chars[player->s_character].lives;
@@ -205,7 +236,13 @@ void check_start(void)
 
 void end_match(void)
 {
-    for (int i = 0; i < MAX_PLAYERS; i++) { players[i].in_match = 0; players[i].ready = players[i].bot; }
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        players[i].in_match = 0;
+        players[i].ready = players[i].bot;
+        /* Put Random choosers back on the Random cell for the next lobby. */
+        if (players[i].pick_random)
+            players[i].s_character = CHAR_RANDOM;
+    }
     clear_fx();
     srv_phase = LOBBY;
     over = 0;
@@ -252,16 +289,25 @@ void drop(int i)
     fprintf(stderr, "slot %d left\n", i);
 }
 
-/* Add a bot using the character and AI the client chose (not the chooser's own character). */
+/* Add a bot using the character and AI the client chose (not the chooser's own character).
+   character == CHAR_RANDOM: bot stays on Random until match start. */
 void add_bot(int character, int ai)
 {
     for (int i = 0; i < MAX_PLAYERS; i++) {
         if (player_is_person_or_bot(&players[i])) continue;
+        int ch = 0, rnd = 0;
+        if (character == CHAR_RANDOM) {
+            ch = CHAR_RANDOM;
+            rnd = 1;
+        } else if (character >= 0 && character < NCHARS) {
+            ch = character;
+        }
         players[i] = (Player){ .fd = BF_INVALID_SOCKET, .bot = 1, .ready = 1,
-                               .s_character = (character >= 0 && character < NCHARS) ? character : 0,
+                               .s_character = ch, .pick_random = rnd,
                                .ai = (ai >= 0 && ai < NAIS) ? ai : 0, .rng = 2463534242u + 7919u * i };
         players[i].body.move = -1;
-        fprintf(stderr, "slot %d: bot %s (%s)\n", i, ais[players[i].ai].name, chars[players[i].s_character].name);
+        fprintf(stderr, "slot %d: bot %s (%s)\n", i, ais[players[i].ai].name,
+                rnd ? "Random" : chars[players[i].s_character].name);
         return;
     }
 }

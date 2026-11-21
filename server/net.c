@@ -158,8 +158,8 @@ void send_state(int v) {
         // show ships
         for (int k = 0; k < MAX_PLAYERS; k++)
             if (ships[k].on && n < (int)sizeof buf - 48)
-                n += snprintf(buf + n, sizeof buf - n, " Z %d %d %d", k,
-                              ships[k].x, ships[k].vx);
+                n += snprintf(buf + n, sizeof buf - n, " Z %d %d %d %d", k,
+                              ships[k].x, ships[k].y, ships[k].vx);
 
         // show explosions (kind + owner drive gib debris on the client)
         for (int k = 0; k < MAXBOOM; k++)
@@ -256,12 +256,20 @@ static void handle_line_in_lobby(int player_num, char *line) {
              sscanf(line, "X %d", &character) == 1)
         del_bot(character); /* X <slot> removes a bot */
     else if (sscanf(line, "J %d", &character) == 1 && !player->in_match &&
-             !player->ready)
-        player->s_character =
-            (character >= 0 && character < NCHARS)
-                ? character
-                : 0; /* J <char>: hover/pick; locked-in fighters can't change */
-    else if (line[0] == 'R' && srv_phase == LOBBY && !player->in_match)
+             !player->ready) {
+        /* J <char>: hover/pick; CHAR_RANDOM locks in Random until match start.
+           Locked-in fighters can't change. Out-of-range falls back to 0. */
+        if (character == CHAR_RANDOM) {
+            player->s_character = CHAR_RANDOM;
+            player->pick_random = 1;
+        } else if (character >= 0 && character < NCHARS) {
+            player->s_character = character;
+            player->pick_random = 0;
+        } else {
+            player->s_character = 0;
+            player->pick_random = 0;
+        }
+    } else if (line[0] == 'R' && srv_phase == LOBBY && !player->in_match)
         player->ready ^= 1;
 }
 

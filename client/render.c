@@ -836,21 +836,41 @@ static void draw_gibs(void)
     }
 }
 
-/* Draw a ship (Z): art comes from the caller's fighter sheet (ROW_SHIP) */
+/* Draw a ship (Z): art comes from the caller's fighter sheet (ROW_SHIP).
+   Characters with a hat super draw a smaller spinning mitre at the reported y. */
 static void draw_ship(const Ship *s)
 {
     int ch = 0;
     for (int i = 0; i < nf; i++)
-        if (F[i].slot == s->owner) { ch = F[i].ch; break; }
-    float x = s->x * SCALE, y = GROUND - SHIP_Y * SCALE;
+        if (F[i].slot == s->owner) {
+            ch = F[i].ch;
+            break;
+        }
+    int is_hat = 0;
+    if (ch >= 0 && ch < NCHARS)
+        for (int mi = 0; mi < MAXMOVES; mi++) {
+            if (!chars[ch].moves[mi].name)
+                break;
+            if (chars[ch].moves[mi].hat) {
+                is_hat = 1;
+                break;
+            }
+        }
+    float alt = s->y > 0 ? (float)s->y : (float)SHIP_Y;
+    float x = s->x * SCALE, y = GROUND - alt * SCALE;
     if (tex[ch]) {
         int fr = (aclk / 8) % SHIP_FR;
         SDL_FRect src = { fr * SPR_CELL, ROW_SHIP * SPR_CELL, SPR_CELL, SPR_CELL };
-        SDL_FRect dst = { x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 2, SHIP_DRAW_W, SHIP_DRAW_H };
-        SDL_RenderTextureRotated(renderer, tex[ch], &src, &dst, 0, NULL,
+        float dw = is_hat ? 90.0f : (float)SHIP_DRAW_W;
+        float dh = is_hat ? 110.0f : (float)SHIP_DRAW_H;
+        double ang = is_hat ? (double)(aclk * 12) : 0.0;
+        SDL_FRect dst = { x - dw / 2, y - dh / 2, dw, dh };
+        SDL_RenderTextureRotated(renderer, tex[ch], &src, &dst, ang, NULL,
                                  s->vx < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
     } else {
-        box(x - SHIP_DRAW_W / 2, y - SHIP_DRAW_H / 4, SHIP_DRAW_W, SHIP_DRAW_H / 2, 140, 145, 160, 255);
+        float dw = is_hat ? 90.0f : (float)SHIP_DRAW_W;
+        float dh = is_hat ? 40.0f : (float)SHIP_DRAW_H / 2;
+        box(x - dw / 2, y - dh / 2, dw, dh, 140, 145, 160, 255);
     }
 }
 
@@ -1373,7 +1393,7 @@ void draw_options(void)
 
 static int sel_scroll; /* first visible row of the character grid */
 
-static int sel_rows(void) { return (NCHARS + SEL_COLS - 1) / SEL_COLS; }
+static int sel_rows(void) { return (SEL_COUNT + SEL_COLS - 1) / SEL_COLS; }
 static int sel_max_scroll(void)
 {
     int extra = sel_rows() - SEL_VISIBLE_ROWS;
@@ -1427,7 +1447,8 @@ static void draw_roster(void)
     text(left, top - 15, "PLAYERS AND SELECTIONS  (%d/%d)", nl, MAX_PLAYERS);
     for (int i = 0; i < nl; i++) {
         const Lob *p = &U[i];
-        int ch = p->ch >= 0 && p->ch < NCHARS ? p->ch : 0;
+        int is_rand = p->ch == CHAR_RANDOM;
+        int ch = (!is_rand && p->ch >= 0 && p->ch < NCHARS) ? p->ch : 0;
         const Uint8 *c = pal[p->slot % MAX_PLAYERS];
         float x = left + (i % ROSTER_COLS) * width, y = top + (i / ROSTER_COLS) * 36;
         float card_w = width - 10, port = 28;              /* small portrait of their picked fighter */
@@ -1435,9 +1456,15 @@ static void draw_roster(void)
         box(x, y, card_w, 31, 32, 35, 52, 255);
         box(x, y, 4, 31, c[0], c[1], c[2], 255);
         box(x + card_w - port - 3, y + 1, port, port, 20, 20, 36, 255);
-        idle_portrait(ch, x + card_w - port - 3, y + 1, port, 1);
+        if (is_rand) {
+            SDL_SetRenderScale(renderer, 2, 2);
+            text((x + card_w - port + 4) / 2.0f, (y + 6) / 2.0f, "?");
+            SDL_SetRenderScale(renderer, 1, 1);
+        } else {
+            idle_portrait(ch, x + card_w - port - 3, y + 1, port, 1);
+        }
         text(x + 10, y + 4, "%cP%d  %-8.8s  %s", p->slot == me ? '>' : ' ', p->slot,
-             chars[ch].name, p->ready ? "READY" : "PICKING");
+             is_rand ? "Random" : chars[ch].name, p->ready ? "READY" : "PICKING");
         if (p->bot)
             text(x + 10, y + 17, "BOT: %s", p->bot - 1 < nai ? aiName[p->bot - 1] : "?");
         else
@@ -1452,13 +1479,17 @@ void draw_select(int cur, int asel)
     for (int i = 0; i < nl; i++)
         if (U[i].slot == me) mine = &U[i];
     int locked = mine && mine->ready;
-    const Character *c = &chars[cur];
+    int on_random = (cur == CHAR_RANDOM);
+    int preview = on_random ? (int)((aclk / 12) % NCHARS) : cur;
+    if (preview < 0 || preview >= NCHARS)
+        preview = 0;
+    const Character *c = &chars[preview];
 
     /* Preview this fighter's home stage; clear the match latch for the next fight */
     bg_match_picked = 0;
     bg_match = NULL;
     bg_match_stage = -1;
-    draw_stage(bg_char[cur] ? bg_char[cur] : bg);
+    draw_stage(bg_char[preview] ? bg_char[preview] : bg);
     box(0, 0, SW, SH, 8, 8, 20, 175);
 
     SDL_SetRenderScale(renderer, 3, 3);
@@ -1467,56 +1498,73 @@ void draw_select(int cur, int asel)
 
     /* the big preview of whoever the cursor is on */
     box(40, 100, 420, 430, 20, 20, 40, 190);
-    idle_portrait(cur, 50, 110, 400, 1);
+    idle_portrait(preview, 50, 110, 400, 1);
     SDL_SetRenderScale(renderer, 2, 2);
-    text(60 / 2.0f, 505 / 2.0f, "%s", c->name);
+    text(60 / 2.0f, 505 / 2.0f, "%s", on_random ? "RANDOM" : c->name);
     SDL_SetRenderScale(renderer, 1, 1);
     if (locked) {
         SDL_SetRenderScale(renderer, 2, 2);
         text(250 / 2.0f, 130 / 2.0f, "LOCKED IN");
         SDL_SetRenderScale(renderer, 1, 1);
     }
-    text(60, 542, "HP %d   LIVES %d   SPEED %d   JUMP %d", c->hp, c->lives, c->speed, c->jump);
-    text(60, 558, "%s", c->fly ? "Tail flight: hold jump in the air" : "");
-
-    /* its moves */
-    text(480, 108, "MOVES");
-    int line = 0;
-    for (int k = 0; k < MAXMOVES && c->moves[k].name; k++) {
-        const Move *m = &c->moves[k];
-        char cost[16] = "";
-        if (m->cost) snprintf(cost, sizeof cost, " [%d]", m->cost);
-        {
-            float ly = 128 + line++ * 14;
-            text(480, ly, "%-11.11s%s", m->name, m->air ? " (air)" : "");
-            float ax = 480 + 118;
-            if (m->air)
-                ax += 32;
-            if (m->cmd)
-                ax += draw_cmd_arrows(ax, ly - 2, m->cmd, 1);
-            if (m->cmd2) {
-                text(ax, ly, "/");
-                ax += 8;
-                ax += draw_cmd_arrows(ax, ly - 2, m->cmd2, 1);
-            }
-            text(ax, ly, "%s%s", btn_label(m->input), cost);
-        }
+    if (on_random) {
+        text(60, 542, "Server picks a fighter when the match starts");
+        text(60, 558, "");
+    } else {
+        text(60, 542, "HP %d   LIVES %d   SPEED %d   JUMP %d", c->hp, c->lives, c->speed, c->jump);
+        text(60, 558, "%s", c->fly ? "Tail flight: hold jump in the air" : "");
     }
 
-    /* the scrolling grid of fighter portraits */
+    /* its moves (hidden while browsing Random) */
+    text(480, 108, on_random ? "RANDOM" : "MOVES");
+    int line = 0;
+    if (!on_random) {
+        for (int k = 0; k < MAXMOVES && c->moves[k].name; k++) {
+            const Move *m = &c->moves[k];
+            char cost[16] = "";
+            if (m->cost) snprintf(cost, sizeof cost, " [%d]", m->cost);
+            {
+                float ly = 128 + line++ * 14;
+                text(480, ly, "%-11.11s%s", m->name, m->air ? " (air)" : "");
+                float ax = 480 + 118;
+                if (m->air)
+                    ax += 32;
+                if (m->cmd)
+                    ax += draw_cmd_arrows(ax, ly - 2, m->cmd, 1);
+                if (m->cmd2) {
+                    text(ax, ly, "/");
+                    ax += 8;
+                    ax += draw_cmd_arrows(ax, ly - 2, m->cmd2, 1);
+                }
+                text(ax, ly, "%s%s", btn_label(m->input), cost);
+            }
+        }
+    } else {
+        text(480, 128, "Any roster fighter");
+        text(480, 146, "Rolled at match start");
+    }
+
+    /* the scrolling grid of fighter portraits + Random cell */
     ensure_sel_scroll(cur);
     {
         float gx = cell_x(0) - 4, gy = grid_top() - 4;
         float gw = SEL_COLS * CELL_W + (SEL_COLS - 1) * CELL_GAP + 8, gh = grid_h() + 8;
         SDL_Rect clip = { (int)gx, (int)gy, (int)gw, (int)gh };
         SDL_SetRenderClipRect(renderer, &clip);
-        for (int i = 0; i < NCHARS; i++) {
+        for (int i = 0; i < SEL_COUNT; i++) {
             int row = i / SEL_COLS;
             if (row < sel_scroll || row >= sel_scroll + SEL_VISIBLE_ROWS) continue;
             float x = cell_x(i), y = cell_y(i);
-            box(x, y, CELL_W, CELL_H, 30, 30, 48, 235);
-            idle_portrait(i, x + 11, y + 4, 128, 0);
-            text(x + 8, y + CELL_H - 34, "%.12s", chars[i].name);
+            int is_rand = (i == CHAR_RANDOM);
+            box(x, y, CELL_W, CELL_H, is_rand ? 40 : 30, is_rand ? 50 : 30, is_rand ? 70 : 48, 235);
+            if (is_rand) {
+                int flash = (int)((aclk / 12) % NCHARS);
+                idle_portrait(flash, x + 11, y + 4, 128, 0);
+                text(x + 8, y + CELL_H - 34, "Random");
+            } else {
+                idle_portrait(i, x + 11, y + 4, 128, 0);
+                text(x + 8, y + CELL_H - 34, "%.12s", chars[i].name);
+            }
             if (i == cur) {                             /* pulsing cursor */
                 int pulse = 160 + (int)(95 * ((aclk / 6) % 2));
                 box(x - 4, y - 4, CELL_W + 8, 4, pulse, pulse, 40, 255);
@@ -1547,7 +1595,8 @@ void draw_select(int cur, int asel)
     /* short help under the grid; the full controls are in the options menu */
     float hx = cell_x(0), hy = grid_top() + grid_h() + 22;
     text(hx, hy,      "Move: arrows/WASD/pad   Lock in: attack/Enter/Start");
-    text(hx, hy + 16, "T or Back: add a bot as %s (%s)", c->name, nai ? aiName[asel] : "-");
+    text(hx, hy + 16, "T or Back: add a bot as %s (%s)",
+         on_random ? "Random" : c->name, nai ? aiName[asel] : "-");
     text(hx, hy + 32, "[ ] or shoulders: bot AI   Backspace/Delete: remove highlighted");
     text(hx, hy + 48, "Esc: options menu");
 

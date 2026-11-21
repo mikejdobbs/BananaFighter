@@ -151,7 +151,8 @@ static void maybe_add_sp_bot(void)
     for (int i = 0; i < nl; i++)
         if (U[i].slot == me)
             my_ch = U[i].ch;
-    int bot_ch = (my_ch + 1) % NCHARS;
+    /* Prefer a concrete foe; if the human locked Random, the bot does too. */
+    int bot_ch = (my_ch == CHAR_RANDOM) ? CHAR_RANDOM : (my_ch + 1) % NCHARS;
     sendf("B %d %d\n", bot_ch, 0);
     need_sp_bot = 0;
 }
@@ -512,13 +513,13 @@ int main(int argc, char **argv)
             if (!isLockedIn) {
                 int previousCursorIndex = cursorIndex;
                 if (inputEdge & IN_L)
-                    cursorIndex = (cursorIndex + NCHARS - 1) % NCHARS;
+                    cursorIndex = (cursorIndex + SEL_COUNT - 1) % SEL_COUNT;
                 if (inputEdge & IN_R)
-                    cursorIndex = (cursorIndex + 1) % NCHARS;
+                    cursorIndex = (cursorIndex + 1) % SEL_COUNT;
                 if (inputEdge & IN_U)
-                    cursorIndex = (cursorIndex + NCHARS - SEL_COLS) % NCHARS;
+                    cursorIndex = (cursorIndex + SEL_COUNT - SEL_COLS) % SEL_COUNT;
                 if (inputEdge & IN_D)
-                    cursorIndex = (cursorIndex + SEL_COLS) % NCHARS;
+                    cursorIndex = (cursorIndex + SEL_COLS) % SEL_COUNT;
                 if (cursorIndex != previousCursorIndex) {
                     sendf("J %d\n", cursorIndex);
                     sfx(SN_MOVE, 0.6f);
