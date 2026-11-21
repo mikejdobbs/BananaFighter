@@ -109,11 +109,21 @@ typedef struct {
     int owner;          /* slot that caused it; barf spray aims from this fighter */
 } Boom;
 
+/* Bee swarm: lasts BEE_SWARM_TICKS and periodically stings every other fighter. */
+typedef struct {
+    int on;             /* 1 = active */
+    int owner;          /* slot that threw the honey pot */
+    int t;              /* ticks remaining */
+    int sting_cd;       /* ticks until the next round of stings */
+    const Move *m;      /* source of dmg / kb per sting */
+} Swarm;
+
 /* state.c: global game state */
 extern Player players[MAX_PLAYERS];   /* one entry per slot: humans, bots and empty slots */
 extern Proj   projectiles[MAXPROJ];   /* pool of live shots and bombs */
 extern Ship   ships[MAX_PLAYERS];     /* indexed by the owner's slot: one ship per caller */
 extern Boom   explosions[MAXBOOM];    /* pool of live explosion effects */
+extern Swarm  swarm;                  /* at most one bee swarm on stage */
 extern bf_socket_t udp_fd;            /* the gameplay datagram socket */
 extern int    srv_phase;              /* LOBBY (the fighter-select screen) or PLAY (a match) */
 extern int    srv_tick;               /* ticks since the current match started */
@@ -150,11 +160,13 @@ void spawn(Player *p, int owner, const Move *m);
 void call_ship(Player *p, int owner, const Move *m);
 void call_hat(Player *p, int owner, const Move *m);
 void call_rain(Player *p, int owner, const Move *m);
+void call_swarm(Player *p, int owner, const Move *m);
 void melee(int i, const Move *m);
 void update_mike_uppercut(void);
 void update_stephen_pack_flights(void);
 void update_projectiles(void);
 void update_ships(void);
+void update_swarm(void);
 
 /* sim.c */
 void step(void);

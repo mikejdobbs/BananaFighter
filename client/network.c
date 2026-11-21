@@ -29,6 +29,7 @@ Lob U[MAX_PLAYERS];                  /* Lobby entries */
 Shot S[MAXPROJ], BM[MAXPROJ];        /* Shots and bombs */
 Ship SHP[MAX_PLAYERS];               /* Ships */
 Boom EX[MAXBOOM];                    /* Explosions */
+SwarmFx SWARM;                       /* Bee swarm overlay */
 Gib GIB[MAXGIB];                     /* Body-part debris (client FX) */
 Extra Q;                             /* Viewer-only extra state for prediction */
 char aiName[MAXAI][16];              /* AI plugin names announced by the server */
@@ -117,6 +118,7 @@ void network_disconnect(void)
     phase = 'L';
     tick = winner = hasq = mycmd = 0;
     nf = nl = ns = nb = nsh = nex = nai = 0;
+    SWARM.on = 0;
     predicting = pch = 0;
     sent = ack = 0;
     memset(F, 0, sizeof F);
@@ -360,6 +362,7 @@ static void parse(char *s)
 
     /* Reset per-snapshot counters */
     nf = 0; nl = 0; ns = 0; nb = 0; nsh = 0; nex = 0; hasq = 0;
+    SWARM.on = 0;
 
     if (t == 'S') { tick = num(&s); winner = num(&s); ack = (unsigned)num(&s); }
 
@@ -396,6 +399,10 @@ static void parse(char *s)
             if (EX[nex].kind == BOOM_BARF && EX[nex].t >= BARF_BOOM_TICKS - 1)
                 spawn_barf(&EX[nex]);
             nex++;
+        } else if (k == 'W') {
+            SWARM.owner = num(&s);
+            SWARM.t = num(&s);
+            SWARM.on = 1;
         } else break;
     }
     if (t == 'S') { reconcile(); audio_snapshot(); }

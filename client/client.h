@@ -96,6 +96,11 @@ typedef struct {
   int owner; /* slot; barf spray originates here */
 } Boom;
 typedef struct {
+  int on;    /* 1 = bee swarm active this snapshot */
+  int owner; /* slot that threw the honey pot */
+  int t;     /* ticks remaining */
+} SwarmFx;
+typedef struct {
   int on, life, grounded; /* grounded = puddle smeared on the floor */
   float x, y, vx, vy;
   float r;           /* blob / puddle size in screen px */
@@ -175,6 +180,7 @@ extern Lob U[MAX_PLAYERS];
 extern Shot S[MAXPROJ], BM[MAXPROJ];
 extern Ship SHP[MAX_PLAYERS];
 extern Boom EX[MAXBOOM];
+extern SwarmFx SWARM;
 extern Gib GIB[MAXGIB];
 extern Extra Q;
 void spawn_barf(const Boom *b);

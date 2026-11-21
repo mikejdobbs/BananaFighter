@@ -118,6 +118,8 @@ static void update_player(int i)
         if (!move->pack) {
             if (move->rain)
                 call_rain(player, i, move);
+            else if (move->swarm)
+                call_swarm(player, i, move);
             else if (move->hat)
                 call_hat(player, i, move);
             else if (move->ship)
@@ -162,6 +164,7 @@ void step(void)
     update_mike_uppercut();
     update_stephen_pack_flights();
     update_ships();
+    update_swarm();
     update_projectiles();
 
     int n = 0, last = -1;

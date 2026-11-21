@@ -27,6 +27,7 @@ Player players[MAX_PLAYERS];
 Proj   projectiles[MAXPROJ];
 Ship   ships[MAX_PLAYERS];
 Boom   explosions[MAXBOOM];
+Swarm  swarm;
 
 bf_socket_t udp_fd = BF_INVALID_SOCKET;
 int    srv_phase;
@@ -113,6 +114,7 @@ void clear_fx(void)
     memset(projectiles, 0, sizeof projectiles);
     memset(ships, 0, sizeof ships);
     memset(explosions, 0, sizeof explosions);
+    memset(&swarm, 0, sizeof swarm);
 }
 
 void place(Player *player, int x)

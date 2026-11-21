@@ -152,6 +152,17 @@ void call_hat(Player *player, int owner, const Move *move)
     player->body.grace = HAT_LIFE + 8;
 }
 
+/* Throw a honey pot: start a bee swarm that stings every other fighter. */
+void call_swarm(Player *player, int owner, const Move *move)
+{
+    (void)player;
+    swarm = (Swarm){.on = 1,
+                    .owner = owner,
+                    .t = BEE_SWARM_TICKS,
+                    .sting_cd = 6, /* first sting shortly after the pot lands */
+                    .m = move};
+}
+
 /* Rain exploding bombs across the stage from the sky (no ship). */
 void call_rain(Player *player, int owner, const Move *move)
 {
@@ -795,4 +806,27 @@ void update_ships(void)
     for (int k = 0; k < MAXBOOM; k++)
         if (explosions[k].on && --explosions[k].t <= 0)
             explosions[k].on = 0;
+}
+
+/* Advance the bee swarm: sting every other fighter until the timer expires. */
+void update_swarm(void)
+{
+    if (!swarm.on)
+        return;
+    if (--swarm.t <= 0) {
+        swarm.on = 0;
+        return;
+    }
+    if (--swarm.sting_cd > 0)
+        return;
+    swarm.sting_cd = BEE_STING_GAP;
+    if (!swarm.m)
+        return;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        Player *target = &players[i];
+        if (i == swarm.owner || !fighting(target) || target->body.grace)
+            continue;
+        int dir = target->body.x >= players[swarm.owner].body.x ? 1 : -1;
+        hurt(&players[swarm.owner], target, swarm.m, dir);
+    }
 }

@@ -168,6 +168,10 @@ void send_state(int v) {
                     snprintf(buf + n, sizeof buf - n, " X %d %d %d %d %d",
                              explosions[k].x, explosions[k].y, explosions[k].t,
                              explosions[k].kind, explosions[k].owner);
+
+        /* Bee swarm: W owner ticks_left — client draws bees around victims. */
+        if (swarm.on && n < (int)sizeof buf - 32)
+            n += snprintf(buf + n, sizeof buf - n, " W %d %d", swarm.owner, swarm.t);
     }
 
     if (n > (int)sizeof buf - 2)

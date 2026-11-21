@@ -874,6 +874,28 @@ static void draw_ship(const Ship *s)
     }
 }
 
+/* Draw buzzing bees around every fighter except the swarm owner. */
+static void draw_swarm(void)
+{
+    if (!SWARM.on)
+        return;
+    for (int i = 0; i < nf; i++) {
+        Fig f = eff(i);
+        if (f.slot == SWARM.owner)
+            continue;
+        float cx = f.x * SCALE, cy = GROUND - (f.y + chars[f.ch].h * 0.55f) * SCALE;
+        for (int b = 0; b < 8; b++) {
+            float ang = (aclk * 0.22f + b * 0.85f + f.slot) ;
+            float r = 28.0f + 10.0f * (float)((b + aclk / 3) % 3);
+            float bx = cx + cosf(ang) * r;
+            float by = cy + sinf(ang * 1.3f) * (r * 0.55f);
+            box(bx - 3, by - 2, 6, 4, 30, 28, 20, 255);
+            box(bx - 1, by - 3, 2, 2, 250, 210, 40, 255); /* yellow abdomen tip */
+            box(bx + 2, by - 1, 4, 2, 200, 200, 210, 180); /* wing */
+        }
+    }
+}
+
 /* Draw the active match: background, actors, HUD, and winner banner */
 void draw_match(void)
 {
@@ -907,6 +929,7 @@ void draw_match(void)
     for (int i = 0; i < ns; i++) draw_shot(&S[i]);
     for (int i = 0; i < nb; i++) draw_bomb(&BM[i]);
     for (int i = 0; i < nex; i++) draw_boom(&EX[i]);
+    draw_swarm();
     draw_gibs();
     for (int i = 0; i < nf; i++) {
         const Fig *f = &F[i];
