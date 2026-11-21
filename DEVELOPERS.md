@@ -178,7 +178,7 @@ frames from `tools/refs/<name>_style_a_frames/`; the others are drawn procedural
 each fighter sheet (row `ROW_SHOT`). `misc` regenerates `fx.png`. `bg` rebuilds the stadium and every
 character home stage.
 
-Sounds: `python3 make_sounds.py` writes under `sounds/`.
+Sounds: `python3 make_sounds.py` writes under `sounds/` (SFX mono / music stereo, 44.1 kHz).
 
 ## How it works
 

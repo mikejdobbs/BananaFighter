@@ -64,8 +64,9 @@ enum {
 #define CELL_GAP 14
 #define ROSTER_COLS 5 /* player cards per row in the bottom roster */
 
-/* audio: every sound is a mono 16-bit WAV at AUDIO_RATE (see make_sounds.py) */
-#define AUDIO_RATE 22050
+/* audio: SFX are mono 16-bit; music is stereo 16-bit. Both at AUDIO_RATE (see make_sounds.py) */
+#define AUDIO_RATE 44100
+#define AUDIO_CH 2 /* device / mix bus channels */
 #define NVOX 24
 #define MUSIC_VOL 0.30f
 #define SOUND_ON 0.8f /* master volume when sound is on */

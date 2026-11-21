@@ -1,8 +1,8 @@
 /*
  * audio.c
  * Audio system:
- * - Load WAV sounds (mono 16-bit) and convert if needed
- * - Simple voice mixer with a fixed number of channels
+ * - Load WAV sounds (SFX mono / music stereo, 16-bit @ AUDIO_RATE) and convert if needed
+ * - Stereo voice mixer: music is stereo, SFX are centered mono
  * - Music selection, snapshot-driven effects, and per-frame pumping
  */
 
@@ -27,15 +27,16 @@ static const char *sndfile[SN_COUNT] = {
 };
 
 typedef struct {
-  Sint16 *pcm;   /* Interleaved mono 16-bit samples */
-  Uint32 n;      /* Sample count */
+  Sint16 *pcm;   /* Interleaved 16-bit samples (mono or stereo) */
+  Uint32 n;      /* Frame count (one frame = channels samples) */
+  int ch;        /* 1 = mono SFX, 2 = stereo music */
 } Snd;
 
 typedef struct {
   int s;         /* Sound index (SN_*) */
   int on;        /* 1 while playing */
   int loop;      /* Loop when reaching the end */
-  Uint32 pos;    /* Current sample position */
+  Uint32 pos;    /* Current frame position */
   float vol;     /* Volume (0..1) */
 } Voice;
 
@@ -49,7 +50,7 @@ static int intro_pending;              /* waiting for the audio device to open *
 static int intro_vox = -1;             /* voice playing SN_FIGHT, or -1 */
 float mastervol = 1.0f;                /* Mute switch (0 or 1); M key toggles */
 
-/* Load a WAV by name (from base path or current dir), converting to mono 16-bit AUDIO_RATE */
+/* Load a WAV by name; convert to S16 @ AUDIO_RATE. Keep stereo for music, mono for SFX. */
 static int load_snd(int i)
 {
     char path[512];
@@ -62,8 +63,15 @@ static int load_snd(int i)
         snprintf(path, sizeof path, "sounds/%s.wav", sndfile[i]);
         if (!SDL_LoadWAV(path, &spec, &buf, &len)) return 0;
     }
-    SDL_AudioSpec want = { SDL_AUDIO_S16, 1, AUDIO_RATE };
-    if (spec.format != want.format || spec.channels != 1 || spec.freq != AUDIO_RATE) {
+    int music = (i >= SN_MUSIC_MENU);
+    int ch = music ? (spec.channels >= 2 ? 2 : 2) : 1;
+    /* Mono music WAVs (legacy) are upmixed to stereo; stereo SFX downmix to mono. */
+    if (!music && spec.channels > 1)
+        ch = 1;
+    if (music && spec.channels < 2)
+        ch = 2;
+    SDL_AudioSpec want = { SDL_AUDIO_S16, ch, AUDIO_RATE };
+    if (spec.format != want.format || spec.channels != want.channels || spec.freq != AUDIO_RATE) {
         Uint8 *cv;
         int cl;
         if (!SDL_ConvertAudioSamples(&spec, buf, (int)len,
@@ -76,7 +84,8 @@ static int load_snd(int i)
         len = (Uint32)cl;
     }
     snd[i].pcm = (Sint16 *)buf;
-    snd[i].n = len / 2;
+    snd[i].ch = ch;
+    snd[i].n = len / (Uint32)(2 * ch); /* frames */
     return 1;
 }
 
@@ -84,7 +93,7 @@ static int load_snd(int i)
  * stall UI. SDL documents OpenAudioDeviceStream as thread-safe. */
 static int SDLCALL audio_open_thread(void *userdata)
 {
-    SDL_AudioSpec spec = { SDL_AUDIO_S16, 1, AUDIO_RATE };
+    SDL_AudioSpec spec = { SDL_AUDIO_S16, AUDIO_CH, AUDIO_RATE };
     SDL_AudioStream *s;
     (void)userdata;
     s = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
@@ -240,25 +249,35 @@ int music_for_stage(int stage)
     return SN_MUSIC_FIGHT_FIRST + stage;
 }
 
-/* Keep about 125 ms of mixed audio queued. Called once per frame from the main thread. */
-/* Mix all active voices into a small buffer and queue it */
+/* Keep about 125 ms of mixed stereo audio queued. Called once per frame from the main thread. */
 void audio_pump(void)
 {
     intro_try_start();
     if (!astream) return;
-    while (SDL_GetAudioStreamQueued(astream) < AUDIO_RATE / 8 * 2) {
-        Sint16 out[512];
+    /* Stereo S16: 4 bytes/frame. Target ~125 ms of queued audio. */
+    while (SDL_GetAudioStreamQueued(astream) < AUDIO_RATE / 8 * 4) {
+        Sint16 out[512 * AUDIO_CH];
         for (int i = 0; i < 512; i++) {
-            float acc = 0;
+            float L = 0, R = 0;
             for (int v = 0; v < NVOX; v++) {
                 Voice *x = &vox[v];
                 if (!x->on) continue;
                 const Snd *sn = &snd[x->s];
-                acc += sn->pcm[x->pos] * x->vol;
+                if (sn->ch >= 2) {
+                    Uint32 o = x->pos * 2;
+                    L += sn->pcm[o] * x->vol;
+                    R += sn->pcm[o + 1] * x->vol;
+                } else {
+                    float s = sn->pcm[x->pos] * x->vol;
+                    L += s;
+                    R += s;
+                }
                 if (++x->pos >= sn->n) { x->pos = 0; if (!x->loop) x->on = 0; }
             }
-            acc *= mastervol;
-            out[i] = (Sint16)(acc > 32767 ? 32767 : acc < -32768 ? -32768 : acc);
+            L *= mastervol;
+            R *= mastervol;
+            out[i * 2]     = (Sint16)(L > 32767 ? 32767 : L < -32768 ? -32768 : L);
+            out[i * 2 + 1] = (Sint16)(R > 32767 ? 32767 : R < -32768 ? -32768 : R);
         }
         SDL_PutAudioStreamData(astream, out, sizeof out);
     }
