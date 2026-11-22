@@ -1488,15 +1488,18 @@ static void draw_roster(void)
         }
         text(x + 10, y + 4, "%cP%d  %-8.8s  %s", p->slot == me ? '>' : ' ', p->slot,
              is_rand ? "Random" : chars[ch].name, p->ready ? "READY" : "PICKING");
-        if (p->bot)
-            text(x + 10, y + 17, "BOT: %s", p->bot - 1 < nai ? aiName[p->bot - 1] : "?");
-        else
+        if (p->bot) {
+            static const char *diff_label[] = { "Easy", "Normal", "Hard" };
+            int d = p->bot - 1;
+            text(x + 10, y + 17, "BOT: %s",
+                 d >= 0 && d < 3 ? diff_label[d] : "?");
+        } else
             text(x + 10, y + 17, p->slot == me ? "YOU" : "HUMAN");
     }
 }
 
 /* Main select screen: big preview, move list, grid of portraits, and help */
-void draw_select(int cur, int asel)
+void draw_select(int cur, int dsel)
 {
     const Lob *mine = NULL;
     for (int i = 0; i < nl; i++)
@@ -1617,11 +1620,15 @@ void draw_select(int cur, int asel)
 
     /* short help under the grid; the full controls are in the options menu */
     float hx = cell_x(0), hy = grid_top() + grid_h() + 22;
-    text(hx, hy,      "Move: arrows/WASD/pad   Lock in: attack/Enter/Start");
-    text(hx, hy + 16, "T or Back: add a bot as %s (%s)",
-         on_random ? "Random" : c->name, nai ? aiName[asel] : "-");
-    text(hx, hy + 32, "[ ] or shoulders: bot AI   Backspace/Delete: remove highlighted");
-    text(hx, hy + 48, "Esc: options menu");
+    {
+        static const char *diff_label[] = { "Easy", "Normal", "Hard" };
+        const char *diff = (dsel >= 0 && dsel < 3) ? diff_label[dsel] : "Normal";
+        text(hx, hy,      "Move: arrows/WASD/pad   Lock in: attack/Enter/Start");
+        text(hx, hy + 16, "T or Back: add a bot as %s (%s)",
+             on_random ? "Random" : c->name, diff);
+        text(hx, hy + 32, "[ ] or shoulders: difficulty   Backspace/Delete: remove highlighted");
+        text(hx, hy + 48, "Esc: options menu");
+    }
 
     draw_roster();
 }

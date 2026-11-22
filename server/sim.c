@@ -15,6 +15,7 @@ static int think(int i)
         .foe = &chars[players[target].s_character],
         .self = &player->body,
         .tgt = &players[target].body,
+        .diff = player->diff,
         .rng = &player->rng,
         .shot = 9999,
     };
@@ -87,7 +88,7 @@ static void update_player(int i)
         take_input(player);
     else if (player->think_cd-- <= 0) { /* bots hold input between thoughts */
         player->in = think(i);
-        player->think_cd = AI_THINK_TICKS;
+        player->think_cd = ai_think_ticks(player->diff);
     }
 
     player->in_history[player->in_history_n++ % 32] = player->in;

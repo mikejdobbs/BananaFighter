@@ -107,7 +107,7 @@ void send_state(int v) {
                 n < (int)sizeof buf - 48)
                 n += snprintf(buf + n, sizeof buf - n, " U %d %d %d %d", k,
                               players[k].s_character, players[k].ready,
-                              players[k].bot ? players[k].ai + 1 : 0);
+                              players[k].bot ? players[k].diff + 1 : 0);
     } else { // NOT IN LOBBY
         n = snprintf(buf, sizeof buf, "S %d %d %d", srv_tick, srv_winner,
                      players[v].num_ack_by_server);
@@ -255,7 +255,7 @@ static void handle_line_in_lobby(int player_num, char *line) {
 
     if (srv_phase == LOBBY && !player->in_match &&
         sscanf(line, "B %d %d", &character, &ai) == 2)
-        add_bot(character, ai); /* B <char> <ai>: any number of bots */
+        add_bot(character, ai); /* B <char> <diff>: 0 Easy, 1 Normal, 2 Hard */
     else if (srv_phase == LOBBY && !player->in_match &&
              sscanf(line, "X %d", &character) == 1)
         del_bot(character); /* X <slot> removes a bot */

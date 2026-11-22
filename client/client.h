@@ -204,7 +204,7 @@ extern SDL_Renderer *renderer;
 void load_sprites(void);
 void anim_tick(void);
 void draw_match(void);
-void draw_select(int cursorIndex, int aiSelectionIndex);
+void draw_select(int cursorIndex, int diffSelectionIndex);
 int match_stage_for_music(void); /* -1 stadium, else 0..NCHARS-1 once match stage latched */
 void draw_title(int item);
 void draw_connect(int list_sel, const char *address, const char *status);

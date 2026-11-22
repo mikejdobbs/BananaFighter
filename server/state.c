@@ -291,9 +291,10 @@ void drop(int i)
     fprintf(stderr, "slot %d left\n", i);
 }
 
-/* Add a bot using the character and AI the client chose (not the chooser's own character).
-   character == CHAR_RANDOM: bot stays on Random until match start. */
-void add_bot(int character, int ai)
+/* Add a bot using the character and difficulty the client chose (not the chooser's own character).
+   character == CHAR_RANDOM: bot stays on Random until match start.
+   diff: 0 Easy, 1 Normal, 2 Hard. Always uses the aggressive (rusher) AI plugin. */
+void add_bot(int character, int diff)
 {
     for (int i = 0; i < MAX_PLAYERS; i++) {
         if (player_is_person_or_bot(&players[i])) continue;
@@ -304,11 +305,15 @@ void add_bot(int character, int ai)
         } else if (character >= 0 && character < NCHARS) {
             ch = character;
         }
+        if (diff < 0) diff = 0;
+        if (diff > 2) diff = 2;
         players[i] = (Player){ .fd = BF_INVALID_SOCKET, .bot = 1, .ready = 1,
                                .s_character = ch, .pick_random = rnd,
-                               .ai = (ai >= 0 && ai < NAIS) ? ai : 0, .rng = 2463534242u + 7919u * i };
+                               .ai = 0, .diff = diff, .rng = 2463534242u + 7919u * i };
         players[i].body.move = -1;
-        fprintf(stderr, "slot %d: bot %s (%s)\n", i, ais[players[i].ai].name,
+        static const char *diff_name[] = { "easy", "normal", "hard" };
+        fprintf(stderr, "slot %d: bot %s/%s (%s)\n", i, ais[players[i].ai].name,
+                diff_name[diff],
                 rnd ? "Random" : chars[players[i].s_character].name);
         return;
     }

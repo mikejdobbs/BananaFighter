@@ -53,6 +53,7 @@ typedef struct {
     /* Bots: no socket and no input queue. Their input comes from a plugin in ais[]. */
     int bot;                /* 1 = computer-controlled slot, 0 = human or empty */
     int ai;                 /* index into ais[]: which AI plugin drives this bot */
+    int diff;               /* 0 Easy, 1 Normal, 2 Hard — scales think rate and aggression */
     int think_cd;           /* ticks until the bot decides again; it holds its input until then */
     int cmd;                /* motion command (CMD_QCF/HCF/FDF) the bot "performs" with its button */
     unsigned rng;           /* this bot's own random-number state, so bots don't act in lockstep */
@@ -145,7 +146,7 @@ void check_start(void);
 void end_match(void);
 void server_reset_world(void); /* wipe lobby/match so embed restart is clean */
 void drop(int i);
-void add_bot(int character, int ai);
+void add_bot(int character, int diff);
 void del_bot(int i);
 int  fight_intro_holding(void); /* 1 while match start is frozen for the announcer */
 void fight_intro_check_done(void); /* clear the hold once the announcer finishes */

@@ -17,6 +17,8 @@ static int connect_addr_dirty; /* 1 after the user types; LAN pick won't overwri
 static int session_mode = MODE_NONE;
 static int hosting;
 static int need_sp_bot;
+static int diffSelectionIndex = 1; /* 0 Easy, 1 Normal, 2 Hard */
+enum { NDIFF = 3 };
 static char connect_addr[128];
 static char connect_status[128];
 static char cli_host[128];
@@ -153,7 +155,7 @@ static void maybe_add_sp_bot(void)
             my_ch = U[i].ch;
     /* Prefer a concrete foe; if the human locked Random, the bot does too. */
     int bot_ch = (my_ch == CHAR_RANDOM) ? CHAR_RANDOM : (my_ch + 1) % NCHARS;
-    sendf("B %d %d\n", bot_ch, 0);
+    sendf("B %d %d\n", bot_ch, diffSelectionIndex);
     need_sp_bot = 0;
 }
 
@@ -256,7 +258,7 @@ int main(int argc, char **argv)
 
     const Uint64 fixedDeltaNs = SDL_NS_PER_SECOND / TICK_HZ;
     Uint64 accumulatedNs = 0, previousTickNs = SDL_GetTicksNS();
-    int cursorIndex = 0, aiSelectionIndex = 0, shouldQuit = 0, previousInputMask = 0;
+    int cursorIndex = 0, shouldQuit = 0, previousInputMask = 0;
 
     while (!shouldQuit) {
         int returnKeyPressed = 0;
@@ -362,12 +364,12 @@ int main(int argc, char **argv)
                 returnKeyPressed = 1;
             if (screen != SCR_PLAY || phase != 'L')
                 continue;
-            if (k == SDLK_LEFTBRACKET && nai)
-                aiSelectionIndex = (aiSelectionIndex + nai - 1) % nai;
-            if (k == SDLK_RIGHTBRACKET && nai)
-                aiSelectionIndex = (aiSelectionIndex + 1) % nai;
+            if (k == SDLK_LEFTBRACKET)
+                diffSelectionIndex = (diffSelectionIndex + NDIFF - 1) % NDIFF;
+            if (k == SDLK_RIGHTBRACKET)
+                diffSelectionIndex = (diffSelectionIndex + 1) % NDIFF;
             if (k == SDLK_T) {
-                sendf("B %d %d\n", cursorIndex, aiSelectionIndex);
+                sendf("B %d %d\n", cursorIndex, diffSelectionIndex);
                 sfx(SN_BOT, 0.8f);
             }
             /* Remove the bot standing on the highlighted fighter, not the last one added. */
@@ -532,13 +534,13 @@ int main(int argc, char **argv)
                 sfx(isLockedIn ? SN_SELECT : SN_READY, 0.9f);
             }
             if (padBackEdge) {
-                sendf("B %d %d\n", cursorIndex, aiSelectionIndex);
+                sendf("B %d %d\n", cursorIndex, diffSelectionIndex);
                 sfx(SN_BOT, 0.8f);
             }
-            if (padLeftShoulderEdge && nai)
-                aiSelectionIndex = (aiSelectionIndex + nai - 1) % nai;
-            if (padRightShoulderEdge && nai)
-                aiSelectionIndex = (aiSelectionIndex + 1) % nai;
+            if (padLeftShoulderEdge)
+                diffSelectionIndex = (diffSelectionIndex + NDIFF - 1) % NDIFF;
+            if (padRightShoulderEdge)
+                diffSelectionIndex = (diffSelectionIndex + 1) % NDIFF;
         }
 
         Uint64 nowNs = SDL_GetTicksNS();
@@ -571,7 +573,7 @@ int main(int argc, char **argv)
             else if (phase == 'S')
                 draw_match();
             else
-                draw_select(cursorIndex, aiSelectionIndex);
+                draw_select(cursorIndex, diffSelectionIndex);
             if (options_open)
                 draw_options();
             draw_touch_controls(screen);
