@@ -12,9 +12,9 @@ enum { DIFF_EASY = 0, DIFF_NORMAL = 1, DIFF_HARD = 2 };
 /* Ticks between bot decisions; Hard reacts faster, Easy slower. */
 static inline int ai_think_ticks(int diff)
 {
-	if (diff <= DIFF_EASY) return 8;
-	if (diff >= DIFF_HARD) return 3;
-	return 5;
+	if (diff <= DIFF_EASY) return 14;
+	if (diff >= DIFF_HARD) return 5;
+	return 8;
 }
 
 #define AI_THINK_TICKS 5 /* Normal default; prefer ai_think_ticks(diff) */
@@ -149,14 +149,23 @@ static inline int ai_special_is_super(AiView *v, int sp)
 static inline int ai_special_chance(const AiView *v, int is_super, int edged)
 {
 	int n;
-	if (v->diff >= DIFF_HARD) n = is_super ? 2 : 4;
-	else if (v->diff <= DIFF_EASY) n = is_super ? 10 : 20;
-	else n = is_super ? 4 : 8;
-	if (edged) {
-		if (v->diff >= DIFF_HARD) n = 2;
-		else if (v->diff == DIFF_NORMAL) n = n > 3 ? n - 2 : 2;
+	if (v->diff >= DIFF_HARD) n = is_super ? 6 : 12;
+	else if (v->diff <= DIFF_EASY) n = is_super ? 35 : 50;
+	else n = is_super ? 14 : 22;
+	/* Edge pressure only tightens specials on Normal/Hard. */
+	if (edged && v->diff >= DIFF_NORMAL) {
+		if (v->diff >= DIFF_HARD) n = n > 4 ? n - 3 : 3;
+		else n = n > 5 ? n - 3 : 4;
 	}
-	return n < 2 ? 2 : n;
+	return n < 3 ? 3 : n;
+}
+
+/* Easy often whiffs an open melee; Normal sometimes hesitates; Hard rarely. */
+static inline int ai_melee_ok(AiView *v)
+{
+	if (v->diff <= DIFF_EASY) return !ai_rand(v, 4);      /* ~25% attack */
+	if (v->diff >= DIFF_HARD) return ai_rand(v, 8) != 0;  /* ~87% attack */
+	return ai_rand(v, 3) != 0;                            /* ~67% attack */
 }
 
 static inline int ai_fly(const AiView *v)
@@ -172,23 +181,31 @@ static inline int ai_rusher(AiView *v)
 	int is_super = ai_special_is_super(v, sp);
 	int upper = ai_special_is_close_uppercut(v, sp);
 
-	/* Prefer in-range uppercut over normals on Normal/Hard. */
-	if (sp && upper && v->diff >= DIFF_NORMAL)
+	/* Prefer in-range uppercut over normals on Hard only (Normal rolls). */
+	if (sp && upper && v->diff >= DIFF_HARD)
+		return sp;
+	if (sp && upper && v->diff == DIFF_NORMAL && !ai_rand(v, 3))
 		return sp;
 	/* Spend meter on supers when available. */
 	if (sp && is_super && !ai_rand(v, ai_special_chance(v, 1, edged)))
 		return sp;
-	if (a) return a;
+	if (a && ai_melee_ok(v)) return a;
 	if (sp && !ai_rand(v, ai_special_chance(v, 0, edged)))
 		return sp;
 
-	/* Edge pressure: stay on them, jump in more often. */
+	/* Easy often stalls or hangs back instead of locking the corner. */
+	if (edged && v->diff <= DIFF_EASY) {
+		if (!ai_rand(v, 3)) return 0;
+		if (!ai_rand(v, 2)) return ai_walk(v, 0) | ai_fly(v);
+	}
 	if (edged) {
-		int jump_n = v->diff >= DIFF_HARD ? 12 : (v->diff <= DIFF_EASY ? 40 : 20);
+		int jump_n = v->diff >= DIFF_HARD ? 20 : 35;
 		if (!ai_rand(v, jump_n)) in |= IN_U;
 		return in | ai_fly(v);
 	}
-	if (!ai_rand(v, v->diff >= DIFF_HARD ? 25 : 40)) in |= IN_U;
+	if (v->diff <= DIFF_EASY && !ai_rand(v, 4))
+		return 0; /* occasional idle on Easy */
+	if (!ai_rand(v, v->diff >= DIFF_HARD ? 35 : 50)) in |= IN_U;
 	return in | ai_fly(v);
 }
 
@@ -200,12 +217,14 @@ static inline int ai_zoner(AiView *v)
 	int is_super = ai_special_is_super(v, sp);
 	int upper = ai_special_is_close_uppercut(v, sp);
 
-	if (sp && upper && v->diff >= DIFF_NORMAL) return sp;
+	if (sp && upper && v->diff >= DIFF_HARD) return sp;
+	if (sp && upper && v->diff == DIFF_NORMAL && !ai_rand(v, 3)) return sp;
 	if (sp && is_super && !ai_rand(v, ai_special_chance(v, 1, edged))) return sp;
 	if (sp && !ai_rand(v, ai_special_chance(v, 0, edged))) return sp;
-	if (a && v->dist < 120) return a;
-	/* Don't give free space when the foe is edged — walk in instead of backing off. */
-	if (edged) return ai_walk(v, 1) | ai_fly(v);
+	if (a && v->dist < 120 && ai_melee_ok(v)) return a;
+	/* Easy: do not relentlessly close an edged foe. */
+	if (edged && v->diff >= DIFF_NORMAL) return ai_walk(v, 1) | ai_fly(v);
+	if (edged && v->diff <= DIFF_EASY && !ai_rand(v, 2)) return ai_walk(v, 1) | ai_fly(v);
 	if (v->dist < 250) return (cornered ? ai_walk(v, 1) : ai_walk(v, 0)) | ai_fly(v);
 	return ai_walk(v, 1);
 }
@@ -217,10 +236,10 @@ static inline int ai_turtle(AiView *v)
 	/* holding away from the opponent blocks, so retreating from a threat guards */
 	if (!edged && (v->shot < 220 || (v->tgt->move >= 0 && v->dist < 250)))
 		return ai_walk(v, 0);
-	if (sp && ai_special_is_close_uppercut(v, sp) && v->diff >= DIFF_NORMAL) return sp;
+	if (sp && ai_special_is_close_uppercut(v, sp) && v->diff >= DIFF_HARD) return sp;
 	if (sp && ai_special_is_super(v, sp) && !ai_rand(v, ai_special_chance(v, 1, edged))) return sp;
-	if (a) return a;
-	if (edged) return ai_walk(v, 1);
+	if (a && ai_melee_ok(v)) return a;
+	if (edged && v->diff >= DIFF_NORMAL) return ai_walk(v, 1);
 	return v->dist > 150 ? ai_walk(v, 1) : 0;
 }
 

@@ -182,12 +182,41 @@ static inline int body_step(Body *body, const Character *character,
         body->crouch = (body->y == 0 && m->crouch);
 
         int f = body->frame++;
-        /* Lion ride: stay on the ground and dash. Hits are rechecked every active tick. */
+        /* Ride dash: lion ride stays grounded; ride_steer (Rose ice dance) is stick-driven. */
         if (m->ride) {
             body->crouch = 0;
-            body->y = 0;
-            body->vy = 0;
-            body->vx = (f < m->startup + m->active) ? body->face * m->ride : 0;
+            if (m->ride_steer && f >= m->startup && f < m->startup + m->active) {
+                int spd = m->ride > 0 ? m->ride : 10;
+                int fly = character->speed > 0 ? character->speed + 2 : 8;
+                int lr = ((in & IN_R) ? spd : 0) - ((in & IN_L) ? spd : 0);
+                if (lr) {
+                    body->vx = lr;
+                    body->face = lr > 0 ? 1 : -1;
+                } else {
+                    body->vx = body->face * spd; /* keep dancing forward if stick is neutral */
+                }
+                if (in & IN_U) {
+                    body->vy = fly; /* jump: soar */
+                    body->flying = 1;
+                } else if (in & IN_D) {
+                    body->vy = -fly; /* optional dive */
+                } else if (body->y > 0) {
+                    body->vy = 0; /* hover while airborne without vertical input */
+                } else {
+                    body->vy = 0;
+                }
+            } else if (!m->ride_steer) {
+                body->y = 0;
+                body->vy = 0;
+                body->vx = (f < m->startup + m->active) ? body->face * m->ride : 0;
+            } else {
+                /* startup / recover of a steerable ride: coast on the ground */
+                body->vy = 0;
+                if (f < m->startup)
+                    body->vx = body->face * (m->ride > 0 ? m->ride : 10);
+                else
+                    body->vx = 0;
+            }
         }
         /* Rocket-pack supers: lift off, then the stick steers. Gravity is skipped
            while the pack is active. Pitches stay in update_stephen_pack_flights. */
@@ -301,6 +330,7 @@ static inline int body_step(Body *body, const Character *character,
                     body->grace = m->startup + m->active + m->recover;
                 /* spin_slam leaps only after a successful grab (server melee). */
                 if (m->ride) {
+                    /* Steerable rides may leave the ground once active; start grounded. */
                     body->y = 0;
                     body->vy = 0;
                     body->vx = body->face * m->ride;
@@ -314,39 +344,58 @@ static inline int body_step(Body *body, const Character *character,
 
     /* Apply movement, clamped to the stage */
     body->x = hi(character->w / 2, lo(STAGE_W - character->w / 2, body->x + body->vx));
-    /* A ride that has reached the wall it is running toward starts recovery. */
+    /* A ride that has reached the wall it is running toward starts recovery.
+       Steerable rides (ice dance) bounce off by reversing face instead of ending early
+       so the player can keep dancing; grounded auto-rides still end at the far wall. */
     if (body->move >= 0) {
         const Move *rm = &character->moves[body->move];
         if (rm->ride && body->frame > rm->startup &&
             body->frame < rm->startup + rm->active) {
             int half = character->w / 2;
-            int at_edge = (body->face > 0 && body->x >= STAGE_W - half) ||
-                          (body->face < 0 && body->x <= half);
-            if (at_edge) {
-                body->frame = rm->startup + rm->active;
-                body->vx = 0;
+            int at_right = body->x >= STAGE_W - half;
+            int at_left = body->x <= half;
+            if (rm->ride_steer) {
+                if ((at_right && body->vx > 0) || (at_left && body->vx < 0)) {
+                    body->face = -body->face;
+                    body->vx = -body->vx;
+                }
+            } else {
+                int at_edge = (body->face > 0 && at_right) || (body->face < 0 && at_left);
+                if (at_edge) {
+                    body->frame = rm->startup + rm->active;
+                    body->vx = 0;
+                }
             }
         }
     }
     body->y += body->vy;
-    /* Pack flight ignores gravity; the stick sets vx/vy. Recover falls normally. */
+    /* Pack / steerable-ride flight ignores gravity; the stick sets vx/vy. Recover falls. */
     {
-        int pack_air = 0;
+        int pack_air = 0, dance_air = 0;
         if (body->move >= 0) {
             const Move *lm = &character->moves[body->move];
             /* frame was already incremented in the move branch */
-            pack_air = lm->pack && body->frame <= lm->startup + lm->active;
+            int in_active = body->frame <= lm->startup + lm->active;
+            pack_air = lm->pack && in_active;
+            dance_air = lm->ride && lm->ride_steer && in_active;
         }
-        if (pack_air) {
+        if (pack_air || dance_air) {
             int half = character->w / 2;
             if (body->x < half + 4)
                 body->x = half + 4;
             else if (body->x > STAGE_W - half - 4)
                 body->x = STAGE_W - half - 4;
-            if (body->y < PACK_Y_MIN)
-                body->y = PACK_Y_MIN;
-            else if (body->y > FLY_CEIL)
-                body->y = FLY_CEIL;
+            if (pack_air) {
+                if (body->y < PACK_Y_MIN)
+                    body->y = PACK_Y_MIN;
+                else if (body->y > FLY_CEIL)
+                    body->y = FLY_CEIL;
+            } else {
+                if (body->y < 0)
+                    body->y = 0;
+                else if (body->y > FLY_CEIL)
+                    body->y = FLY_CEIL;
+            }
         } else
             body->vy -= GRAVITY;
     }

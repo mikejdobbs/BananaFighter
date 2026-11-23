@@ -106,8 +106,10 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    spin:   the projectile's sprite spins in flight (client only).
            With rain/ship/pack: falling bombs use the fighter's ROW_SHOT icon.
    leap:   forward speed during the leap; leap_vy is the initial rise (0 = ~70% of jump).
-   ride:   grounded dash speed (px/tick). Each foe in the hitbox is hurt once along the
-           path. Stays on the ground (no leap jump) and recovers early at the far edge. */
+   ride:   dash speed (px/tick). Each foe in the hitbox is hurt once along the path.
+           Default: grounded auto-dash toward face, ends early at the far edge.
+   ride_steer: if set with ride, the stick steers — left/right flips the dance direction,
+           jump (up) soars through the air (no gravity while active). */
 typedef struct {
     const char *name;
     int input, cmd, cmd2, air, crouch;
@@ -118,7 +120,7 @@ typedef struct {
     int spread, spread_vy;
     int invis, invuln, knockdown, throw, spin_slam, combo_hits, bucket_burst, cost;
     int ship, pack, boom, boom_r, spin, anim;
-    int leap, leap_vy, ride, rain, hat, swarm;
+    int leap, leap_vy, ride, ride_steer, rain, hat, swarm;
 } Move;
 
 #define SPIN_SLAM_TICKS  56 /* max ticks airborne before forced slam */
@@ -264,7 +266,7 @@ static const Character chars[] = {
         { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=72, .kb=15, .reach=58, .y=-44, .h=74 },
         { .name="manifesto", .input=IN_P, .cmd=CMD_QCF, .startup=12, .active=1, .recover=22, .dmg=44, .kb=8, .y=93, .h=22, .proj_speed=13, .proj_life=70, .anim=A_CAST },
         { .name="cackle", .input=IN_HP, .cmd=CMD_FDF, .startup=4, .active=8, .recover=22, .dmg=200, .kb=40, .reach=160, .y=90, .h=90, .invuln=1, .knockdown=1, .anim=A_SPECIAL },
-        { .name="mega cackle", .input=IN_HK, .cmd=CMD_HCF, .startup=14, .active=1, .recover=36, .dmg=120, .kb=55, .y=60, .h=80, .boom=1, .boom_r=STAGE_W, .knockdown=1, .cost=60, .anim=A_SUPER },
+        { .name="mega cackle", .input=IN_HK, .cmd=CMD_HCF, .startup=14, .active=1, .recover=36, .dmg=120, .kb=55, .y=60, .h=80, .boom=1, .boom_r=180, .knockdown=1, .cost=60, .anim=A_SUPER },
     }},
     { .name = "Flusk", .hp = 900, .lives = 3, .speed = 6, .jump = 28, .w = 58, .h = 156, .moves = {
         { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
@@ -437,8 +439,8 @@ static const Character chars[] = {
         { .name="ice bolt", .input=IN_P, .cmd=CMD_QCF, .startup=10, .active=1, .recover=20, .dmg=48, .kb=8, .y=96, .h=20, .proj_speed=14, .proj_life=72, .proj_x=62, .spin=1, .anim=A_CAST },
         /* Ice blast from the hand: tall leaping area hit. */
         { .name="ice blast", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=10, .recover=24, .dmg=240, .kb=34, .reach=160, .y=-200, .h=380, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=3, .leap_vy=44 },
-        /* Dance dash across the stage blasting ice at everyone in her path. */
-        { .name="ice dance", .input=IN_HK, .cmd=CMD_HCF, .startup=8, .active=90, .recover=18, .dmg=110, .kb=36, .reach=120, .y=-40, .h=220, .invuln=1, .knockdown=1, .cost=55, .anim=A_SUPER, .ride=14 },
+        /* Controllable ice dance: left/right steers, jump soars; hits along the path. */
+        { .name="ice dance", .input=IN_HK, .cmd=CMD_HCF, .startup=8, .active=90, .recover=18, .dmg=110, .kb=36, .reach=120, .y=-40, .h=220, .invuln=1, .knockdown=1, .cost=55, .anim=A_SUPER, .ride=14, .ride_steer=1 },
     }},
     { .name = "Toadie", .hp = 920, .lives = 3, .speed = 5, .jump = 26, .w = 60, .h = 148, .moves = {
         { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
