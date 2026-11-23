@@ -164,6 +164,7 @@ void call_rain(Player *p, int owner, const Move *m);
 void call_swarm(Player *p, int owner, const Move *m);
 void melee(int i, const Move *m);
 void update_mike_uppercut(void);
+void update_toadie_gulp(void);
 void update_stephen_pack_flights(void);
 void update_projectiles(void);
 void update_ships(void);

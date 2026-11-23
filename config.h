@@ -90,6 +90,8 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    spin_slam: throw that carries a victim airborne then slams (boom AoE on land).
    combo_hits: with spin_slam, this many uppercuts (1 on connect + rest in air) then arm slam.
                dmg is total victim damage (split across uppercuts / slam).
+   gulp:   throw that swallows the victim (they vanish / cannot act) for GULP_HIDE_TICKS,
+           then spit them out. Heals the attacker by GULP_HEAL on a successful swallow.
    bucket_burst: eat/startup then barf AoE (BOOM_BARF); no vanish.
    cost:   super meter needed (and spent). Non-throw melee hits everyone in range.
    ship:   calls a ship that drops this many bombs; dmg and kb apply per bomb.
@@ -118,11 +120,13 @@ typedef struct {
     int reach, y, h;
     int proj_speed, proj_life, proj_x;
     int spread, spread_vy;
-    int invis, invuln, knockdown, throw, spin_slam, combo_hits, bucket_burst, cost;
+    int invis, invuln, knockdown, throw, spin_slam, combo_hits, gulp, bucket_burst, cost;
     int ship, pack, boom, boom_r, spin, anim;
     int leap, leap_vy, ride, ride_steer, rain, hat, swarm;
 } Move;
 
+#define GULP_HIDE_TICKS 180 /* ~3s at 60Hz: swallowed foe stays invisible / locked */
+#define GULP_HEAL       100 /* HP Toadie restores on a successful gulp */
 #define SPIN_SLAM_TICKS  56 /* max ticks airborne before forced slam */
 #define SPIN_SLAM_JUMP   58 /* large leap (above a normal jump); applied on grab */
 #define COMBO_HIT_GAP    6  /* ticks between grounded sky-uppercut hits on a falling foe */
@@ -465,7 +469,8 @@ static const Character chars[] = {
         /* Full-stage tongue whip — fireball slot; reach spans STAGE_W (client draws the tongue). */
         { .name="tongue whip", .input=IN_P, .cmd=CMD_QCF, .startup=6, .active=10, .recover=20, .dmg=58, .kb=14, .reach=STAGE_W, .y=60, .h=60, .anim=A_CAST },
         /* Gulp: command grab that eats the foe standing next to him. */
-        { .name="gulp", .input=IN_HP, .cmd=CMD_FDF, .startup=10, .active=4, .recover=26, .dmg=200, .kb=45, .reach=THROW_RANGE, .y=0, .h=200, .throw=1, .knockdown=1, .invuln=1, .anim=A_SPECIAL },
+        /* Lean in, swallow the nearest foe whole; they vanish until spit out. */
+        { .name="gulp", .input=IN_HP, .cmd=CMD_FDF, .startup=10, .active=4, .recover=26, .dmg=120, .kb=30, .reach=THROW_RANGE, .y=0, .h=200, .throw=1, .gulp=1, .invuln=1, .anim=A_SPECIAL },
         /* Raining exploding toads across the whole stage (no bomber ship). */
         { .name="toad storm", .input=IN_HK, .cmd=CMD_HCF, .startup=12, .active=1, .recover=36, .dmg=48, .kb=22, .y=80, .h=20, .rain=14, .spin=1, .cost=55, .invuln=1, .anim=A_SUPER },
     }},

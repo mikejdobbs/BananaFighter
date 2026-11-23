@@ -497,7 +497,37 @@ void melee(int player_index, const Move *move)
     /* Closest grab victim: start carry or apply a normal throw. */
     Move throw_move = *move;
     throw_move.throw = 1; /* ensure unblockable */
-    if (move->spin_slam && move->combo_hits > 0) {
+    if (move->gulp) {
+        Player *victim = &players[best];
+        Move bite = *move;
+        bite.throw = 0; /* no toss-up; swallowed instead */
+        bite.knockdown = 0;
+        bite.kb = 0;
+        hurt(player, victim, &bite, player->body.face);
+        /* Heal after damage so a KO gulp still grants the bite HP. */
+        player->hp = lo(chars[player->s_character].hp, player->hp + GULP_HEAL);
+        player->body.hit = 1;
+        player->body.vx = 0;
+        player->body.vy = 0;
+        player->body.y = 0;
+        /* If the bite KOs them, there is nobody left to swallow. */
+        if (!fighting(victim))
+            return;
+        player->carry_slot = best;
+        player->carry_t = GULP_HIDE_TICKS;
+        player->carry_move = move;
+        player->carry_hits_left = 0;
+        player->carry_hit_cd = 0;
+        victim->body.block = 0;
+        victim->body.flying = 0;
+        victim->body.vx = 0;
+        victim->body.vy = 0;
+        victim->body.y = 0;
+        victim->body.move = -1;
+        victim->body.stun = GULP_HIDE_TICKS;
+        victim->body.invis = GULP_HIDE_TICKS; /* fully hidden while digested */
+        victim->in = 0;
+    } else if (move->spin_slam && move->combo_hits > 0) {
         /* Stay grounded; remaining uppercuts + arm slam run in update_mike_uppercut. */
         player->carry_slot = best;
         player->carry_t = SPIN_SLAM_TICKS + 40;
@@ -516,6 +546,57 @@ void melee(int player_index, const Move *move)
     }
 }
 
+/* Per-tick swallow: victim stays invisible/locked; Toadie can walk freely while digesting. */
+void update_toadie_gulp(void)
+{
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        Player *attacker = &players[i];
+        if (attacker->carry_t <= 0 || !attacker->carry_move || !attacker->carry_move->gulp)
+            continue;
+
+        int victim_slot = attacker->carry_slot;
+        if (victim_slot < 0 || victim_slot >= MAX_PLAYERS ||
+            !fighting(&players[victim_slot]) || !fighting(attacker)) {
+            clear_carry(attacker);
+            continue;
+        }
+
+        Player *victim = &players[victim_slot];
+
+        /* Victim rides along invisibly with Toadie until spit. */
+        victim->body.x = attacker->body.x;
+        victim->body.y = 0;
+        victim->body.vx = 0;
+        victim->body.vy = 0;
+        victim->body.move = -1;
+        victim->body.block = 0;
+        victim->body.flying = 0;
+        victim->body.stun = hi(victim->body.stun, 4);
+        victim->body.invis = hi(victim->body.invis, attacker->carry_t);
+        victim->in = 0;
+
+        if (--attacker->carry_t > 0)
+            continue;
+
+        /* Spit out: reappear in front, knockdown pop, clear swallow. */
+        victim->body.invis = 0;
+        victim->body.x = attacker->body.x + attacker->body.face * 56;
+        victim->body.y = 0;
+        victim->body.grace = 0;
+        {
+            Move spit = *attacker->carry_move;
+            spit.throw = 0;
+            spit.gulp = 0;
+            spit.knockdown = 1;
+            spit.dmg = 0; /* damage already applied on swallow */
+            spit.kb = spit.kb > 0 ? spit.kb : 30;
+            hurt(attacker, victim, &spit, attacker->body.face);
+        }
+        victim->body.grace = 8;
+        clear_carry(attacker);
+    }
+}
+
 /* Per-tick follow-through for spin_slam + combo_hits (sky uppercut / arm slam). */
 void update_mike_uppercut(void)
 {
@@ -523,6 +604,8 @@ void update_mike_uppercut(void)
         Player *attacker = &players[i];
         if (attacker->carry_t <= 0 || !attacker->carry_move)
             continue;
+        if (attacker->carry_move->gulp)
+            continue; /* handled in update_toadie_gulp */
 
         int victim_slot = attacker->carry_slot;
         if (victim_slot < 0 || victim_slot >= MAX_PLAYERS ||

@@ -53,16 +53,23 @@ static void take_input(Player *player)
     }
 }
 
-/* True when carry physics owns this body (carrier or arm-slam victim). */
+/* True when carry physics owns this body (spin_slam carrier, gulp victim, or arm-slam victim).
+   Gulp carriers stay free to walk around while digesting. */
 static int locked_out(int i)
 {
-    if (players[i].carry_t > 0)
+    if (players[i].carry_t > 0 &&
+        !(players[i].carry_move && players[i].carry_move->gulp))
         return 1;
-    /* Arm-slam victim only; free to float during sky-uppercut juggle. */
-    for (int a = 0; a < MAX_PLAYERS; a++)
-        if (players[a].carry_t > 0 && players[a].carry_slot == i &&
-            players[a].carry_hits_left <= 0)
+    for (int a = 0; a < MAX_PLAYERS; a++) {
+        if (players[a].carry_t <= 0 || players[a].carry_slot != i)
+            continue;
+        /* Gulp: victim is locked for the whole swallow. */
+        if (players[a].carry_move && players[a].carry_move->gulp)
             return 1;
+        /* Arm-slam victim only; free to float during sky-uppercut juggle. */
+        if (players[a].carry_hits_left <= 0)
+            return 1;
+    }
     return 0;
 }
 
@@ -163,6 +170,7 @@ void step(void)
             update_player(i);
 
     update_mike_uppercut();
+    update_toadie_gulp();
     update_stephen_pack_flights();
     update_ships();
     update_swarm();

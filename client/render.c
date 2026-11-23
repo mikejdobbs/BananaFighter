@@ -129,6 +129,15 @@ static int is_spin_slam_st(int ch, int st)
     return m->name && m->spin_slam;
 }
 
+/* True if this move is Toadie's gulp swallow. */
+static int is_gulp_st(int ch, int st)
+{
+    if (st < 0 || st >= MAXMOVES || ch < 0 || ch >= NCHARS)
+        return 0;
+    const Move *m = &chars[ch].moves[st];
+    return m->name && m->gulp;
+}
+
 /* True if this move is a player-steered rocket-pack flight. */
 static int is_pack_st(int ch, int st)
 {
@@ -152,11 +161,14 @@ static Fig eff(int i)
 {
     Fig f = F[i];
     if (predicting && f.slot == me) {
-        /* Prediction has no carry physics — trust server for the whole slam. */
+        /* Prediction has no carry physics — trust server for slam / gulp. */
         if (is_spin_slam_st(f.ch, f.st) ||
             (pb.move >= 0 && chars[pch].moves[pb.move].spin_slam))
             return f;
-        /* Chicken-bucket vanish is server-owned; prediction would desync invis. */
+        if (is_gulp_st(f.ch, f.st) ||
+            (pb.move >= 0 && chars[pch].moves[pb.move].gulp))
+            return f;
+        /* Vanish (gulp / chicken) is server-owned; prediction would desync invis. */
         if (f.invis)
             return f;
         f.x = pb.x; f.y = pb.y; f.face = pb.face; f.invis = pb.invis > 0;
@@ -316,6 +328,16 @@ static void pick(const Fig *f, int *row, int *col)
             else if (t < (S * 2) / 3) *col = 1;
             else if (t < S) *col = 2;
             else *col = 3;
+        } else if (m->gulp) {
+            /* Lean over → gulp → keep swallowing while the foe is inside. */
+            int S = m->startup > 0 ? m->startup : 1;
+            int t = a->t;
+            if (t < S / 2) *col = 1;
+            else if (t < S) *col = 2;
+            else if (hasq && f->slot == me && Q.frame >= 1 && Q.frame <= 4)
+                *col = Q.frame; /* server pose during digest */
+            else
+                *col = 2 + ((t / 6) % 2); /* swallow loop */
         } else if (m->ride && m->anim == A_SUPER) {
             /* Dance/ride supers: cycle the mid cells so the dash reads as spinning. */
             int S = m->startup > 0 ? m->startup : 1;
