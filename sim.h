@@ -263,6 +263,8 @@ static inline int body_step(Body *body, const Character *character,
         int airborne = body->y > 0;
         int ducking = !airborne && (in & IN_D);   /* holding down on the ground */
         int want_jump = !airborne && (in & IN_U); /* jump beats standing block (back + up) */
+        /* Block is 0-frame: holding away on the ground sets block this tick (before
+           melee resolves). Faster than every attack, including crouch sweeps. */
         int blocking = !airborne && away && !want_jump;
 
         /* Ducking and blocking are independent: down + away is a crouching block. */

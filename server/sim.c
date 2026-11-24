@@ -73,8 +73,10 @@ static int locked_out(int i)
     return 0;
 }
 
-/* One tick of fighter control: input, motion detect, body_step, spawn/melee. */
-static void update_player(int i)
+/* Input + body_step only. Returns EV_* for a later combat pass.
+   Block/crouch must be set for every fighter before any melee resolves so a
+   same-tick block always beats attacks (including startup-0 specials and sweeps). */
+static int step_player(int i)
 {
     Player *player = &players[i];
     const Character *character = &chars[player->s_character];
@@ -88,7 +90,7 @@ static void update_player(int i)
         if (!player->bot)
             take_input(player); /* discard mash, keep acks moving */
         player->in = 0;
-        return;
+        return 0;
     }
 
     if (!player->bot)
@@ -119,6 +121,15 @@ static void update_player(int i)
     if (player->body.move >= 0 && player->body.frame == 1 &&
         character->moves[player->body.move].ride)
         player->ride_mask = 0;
+
+    return ev;
+}
+
+/* Apply spawn/melee after every fighter has finished step_player this tick. */
+static void apply_player_combat(int i, int ev)
+{
+    Player *player = &players[i];
+    const Character *character = &chars[player->s_character];
 
     if (ev & EV_SPAWN) {
         const Move *move = &character->moves[player->body.move];
@@ -165,9 +176,14 @@ void step(void)
         return;
     }
 
+    /* Pass 1: everyone moves / blocks. Pass 2: hits land. Holding away blocks on
+       the same tick an attack becomes active — even startup-0 specials and sweeps. */
+    int evs[MAX_PLAYERS];
     for (int i = 0; i < MAX_PLAYERS; i++)
-        if (fighting(&players[i]))
-            update_player(i);
+        evs[i] = fighting(&players[i]) ? step_player(i) : 0;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+        if (fighting(&players[i]) && evs[i])
+            apply_player_combat(i, evs[i]);
 
     update_mike_uppercut();
     update_toadie_gulp();

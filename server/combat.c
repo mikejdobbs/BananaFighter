@@ -49,6 +49,8 @@ static void hurt(Player *attacker, Player *victim, const Move *move, int dir)
     attacker->body.meter = lo(METER_MAX, attacker->body.meter + move->dmg / 4);
     vb->meter = lo(METER_MAX, vb->meter + move->dmg / 8);
 
+    /* Standing or crouching block works on every non-throw, including crouch
+       sweeps / low kicks — there is no high/low block split. */
     if (vb->block && !move->throw) { /* chip damage only; grabs beat blocks */
         victim->hp -= move->dmg * BLOCK_PCT / 100;
         vb->vx = dir * move->kb / 8;
