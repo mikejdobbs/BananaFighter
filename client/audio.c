@@ -24,7 +24,7 @@ static const char *sndfile[SN_COUNT] = {
     "music_fight_kammy", "music_fight_flusk", "music_fight_stephen",
     "music_fight_lopicardo", "music_fight_mike", "music_fight_krampus",
     "music_fight_kevkev", "music_fight_rose", "music_fight_toadie",
-    "music_fight_popearoni", "music_fight_pooh",
+    "music_fight_popearoni", "music_fight_pooh", "music_fight_santa",
 };
 
 typedef struct {

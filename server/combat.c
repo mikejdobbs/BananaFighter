@@ -99,7 +99,10 @@ void spawn(Player *player, int owner, const Move *move)
                 .x = player->body.x + player->body.face * fwd,
                 .y = player->body.y + move->y + move->h / 2,
                 .vx = player->body.face * move->proj_speed,
-                .vy = vy,
+                /* Gift bombs (and similar) loft slightly then fall with gravity. */
+                .vy = move->bomb ? vy - 4 : vy,
+                .grav = move->bomb ? BOMB_GRAV : 0,
+                .bomb = move->bomb ? 1 : 0,
                 .life = move->proj_life,
                 .m = move};
             break;

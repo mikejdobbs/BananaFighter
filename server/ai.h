@@ -62,7 +62,8 @@ static inline int ai_is_super(const Move *m)
 
 static inline int ai_is_uppercut(const Move *m)
 {
-	return m->cmd == CMD_FDF && !m->proj_speed && (m->reach || m->leap_vy || m->spin_slam || m->throw);
+	return m->cmd == CMD_FDF && !m->proj_speed &&
+	       (m->reach || m->leap_vy || m->spin_slam || m->throw || m->boom);
 }
 
 static inline int ai_is_projectile(const Move *m)

@@ -690,7 +690,7 @@ def ph(*pairs):
 FIGHT_TRACKS = (
     'stadium', 'slurpy', 'alien', 'rump', 'jv', 'kammy',
     'flusk', 'stephen', 'lopicardo', 'mike', 'krampus', 'kevkev', 'rose', 'toadie',
-    'popearoni', 'pooh',
+    'popearoni', 'pooh', 'santa',
 )
 
 # Expanded arcade recipes: 16-bar forms, real phrases, stereo FX.
@@ -998,6 +998,25 @@ FIGHT_RECIPES = {
         counter_B=ph((60, 4), (64, 4), (67, 4), (64, 4), (60, 8), (55, 8)),
         vols=dict(kick=0.50, snare=0.38, hat=0.22, bass=0.26, pad=0.18, lead=0.17, arp=0.12, counter=0.10),
         delay_beats=0.75, delay_mix=0.18, reverb_mix=0.20, accent='toy',
+    ),
+    'santa': dict(  # merry sleigh bounce with sleigh-bell hats
+        bpm=128, bars=16,
+        chords=[(60, 'maj'), (67, 'maj'), (65, 'maj'), (60, 'maj'),
+                (60, 'maj'), (62, 'min'), (67, 'maj'), (60, 'maj'),
+                (60, 'add9'), (65, 'maj'), (67, 'maj'), (64, 'min'),
+                (60, 'maj'), (67, 'maj'), (65, 'maj'), (60, 'maj')],
+        bass_roots=[48, 55, 53, 48, 48, 50, 55, 48, 48, 53, 55, 52, 48, 55, 53, 48],
+        bass_pat=(1, 0, 1, 0, 1, 0, 2, 0),
+        kick_pat=(1, 0, 0, 0, 1, 0, 0, 1),
+        snare_pat=(0, 0, 1, 0, 0, 0, 1, 0),
+        hat_pat=(1, 0, 1, 0, 1, 0, 1, 0),
+        bass_style='tri', pad_style='sin', lead_style='sq', snare_fn='snare', hat_fn='sleigh',
+        arp_pat=(0, 2, 4, 2, 0, 1, 2, 4), arp_up=1, arp_style='sin',
+        lead_A=ph((72, 2), (76, 2), (79, 4), (76, 2), (72, 2), (67, 4), (69, 4), (72, 8)),
+        lead_B=ph((79, 2), (84, 2), (79, 2), (76, 2), (77, 4), (79, 4), (72, 4), (67, 8)),
+        counter_B=ph((60, 4), (64, 4), (67, 4), (64, 4), (60, 8), (55, 8)),
+        vols=dict(kick=0.52, snare=0.40, hat=0.30, bass=0.28, pad=0.16, lead=0.18, arp=0.10, counter=0.10),
+        delay_beats=0.75, delay_mix=0.16, reverb_mix=0.18, accent=None,
     ),
 }
 

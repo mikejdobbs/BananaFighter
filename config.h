@@ -106,7 +106,8 @@ enum { A_AUTO, A_LP, A_MP, A_HP, A_LK, A_MK, A_HK, A_CAST, A_SPECIAL, A_SUPER };
    boom_r: AOE radius for boom (0 = BOMB_R).
    proj_x: how far in front of the body center a projectile spawns (0 = the body edge).
    spin:   the projectile's sprite spins in flight (client only).
-           With rain/ship/pack: falling bombs use the fighter's ROW_SHOT icon.
+           With rain/ship/pack/bomb: falling bombs use the fighter's ROW_SHOT icon.
+   bomb:   QCF (etc.) projectile is an exploding bomb (gravity + area damage on hit/ground).
    leap:   forward speed during the leap; leap_vy is the initial rise (0 = ~70% of jump).
    ride:   dash speed (px/tick). Each foe in the hitbox is hurt once along the path.
            Default: grounded auto-dash toward face, ends early at the far edge.
@@ -121,7 +122,7 @@ typedef struct {
     int proj_speed, proj_life, proj_x;
     int spread, spread_vy;
     int invis, invuln, knockdown, throw, spin_slam, combo_hits, gulp, bucket_burst, cost;
-    int ship, pack, boom, boom_r, spin, anim;
+    int ship, pack, boom, boom_r, spin, bomb, anim;
     int leap, leap_vy, ride, ride_steer, rain, hat, swarm;
 } Move;
 
@@ -528,6 +529,34 @@ static const Character chars[] = {
         { .name="honey blaze", .input=IN_HP, .cmd=CMD_FDF, .startup=0, .active=12, .recover=26, .dmg=240, .kb=34, .reach=130, .y=-220, .h=400, .invuln=1, .knockdown=1, .anim=A_SPECIAL, .leap=4, .leap_vy=46 },
         /* Throw a honey pot: bee swarm stings everyone else for BEE_SWARM_SEC. */
         { .name="bee storm", .input=IN_HK, .cmd=CMD_HCF, .startup=14, .active=1, .recover=36, .dmg=14, .kb=6, .swarm=1, .cost=55, .invuln=1, .anim=A_SUPER },
+    }},
+    /* Jolly red suit, white beard. Duck poses bend the knees (ROW_CROUCH / crouch rows). */
+    { .name = "Santa", .hp = 960, .lives = 3, .speed = 5, .jump = 24, .w = 64, .h = 158, .moves = {
+        { .name="grab", .input=IN_HP, .startup=4, .active=3, .recover=20, .dmg=70, .kb=50, .reach=THROW_RANGE, .y=0, .h=200, .throw=1 },
+        { .name="jab", .input=IN_LP, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=48, .y=88, .h=24 },
+        { .name="strong", .input=IN_MP, .startup=5, .active=3, .recover=10, .dmg=48, .kb=10, .reach=60, .y=86, .h=30 },
+        { .name="fierce", .input=IN_HP, .startup=8, .active=4, .recover=16, .dmg=76, .kb=17, .reach=70, .y=84, .h=38 },
+        { .name="short", .input=IN_LK, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=52, .y=14, .h=28 },
+        { .name="forward", .input=IN_MK, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=74, .y=8, .h=40 },
+        { .name="roundhouse", .input=IN_HK, .startup=10, .active=4, .recover=18, .dmg=82, .kb=19, .reach=88, .y=20, .h=54 },
+        { .name="crouch jab", .input=IN_LP, .crouch=1, .startup=3, .active=2, .recover=6, .dmg=24, .kb=5, .reach=48, .y=42, .h=24 },
+        { .name="crouch strong", .input=IN_MP, .crouch=1, .startup=5, .active=3, .recover=10, .dmg=48, .kb=10, .reach=60, .y=40, .h=30 },
+        { .name="crouch fierce", .input=IN_HP, .crouch=1, .startup=8, .active=4, .recover=18, .dmg=76, .kb=17, .reach=70, .y=38, .h=38 },
+        { .name="crouch short", .input=IN_LK, .crouch=1, .startup=4, .active=2, .recover=7, .dmg=26, .kb=6, .reach=52, .y=6, .h=28 },
+        { .name="crouch forward", .input=IN_MK, .crouch=1, .startup=7, .active=3, .recover=12, .dmg=52, .kb=12, .reach=74, .y=4, .h=40 },
+        { .name="crouch sweep", .input=IN_HK, .crouch=1, .startup=10, .active=4, .recover=20, .dmg=82, .kb=19, .reach=94, .y=0, .h=32 },
+        { .name="air light punch", .input=IN_LP, .air=1, .startup=3, .active=14, .recover=6, .dmg=32, .kb=7, .reach=50, .y=18, .h=48 },
+        { .name="air medium punch", .input=IN_MP, .air=1, .startup=3, .active=14, .recover=6, .dmg=42, .kb=9, .reach=52, .y=18, .h=48 },
+        { .name="air heavy punch", .input=IN_HP, .air=1, .startup=4, .active=14, .recover=7, .dmg=56, .kb=12, .reach=56, .y=18, .h=48 },
+        { .name="air light kick", .input=IN_LK, .air=1, .startup=4, .active=14, .recover=6, .dmg=38, .kb=9, .reach=58, .y=-40, .h=72 },
+        { .name="air medium kick", .input=IN_MK, .air=1, .startup=4, .active=14, .recover=6, .dmg=52, .kb=11, .reach=60, .y=-40, .h=72 },
+        { .name="air heavy kick", .input=IN_HK, .air=1, .startup=5, .active=14, .recover=7, .dmg=70, .kb=15, .reach=64, .y=-40, .h=72 },
+        /* Gift projectile: flies level like a fireball (not a falling bomb). */
+        { .name="gift", .input=IN_P, .cmd=CMD_QCF, .startup=12, .active=1, .recover=22, .dmg=55, .kb=14, .y=100, .h=24, .proj_speed=13, .proj_life=70, .proj_x=68, .spin=1, .anim=A_CAST },
+        /* Overhead sledgehammer slam: boom AoE hits everyone near Santa. */
+        { .name="sledgehammer", .input=IN_P, .cmd=CMD_FDF, .startup=6, .active=6, .recover=32, .dmg=95, .kb=28, .reach=0, .y=20, .h=140, .invuln=1, .knockdown=1, .boom=1, .boom_r=150, .anim=A_SPECIAL },
+        /* Calls Krampus to carpet-bomb the stage. */
+        { .name="krampus", .input=IN_HK, .cmd=CMD_HCF, .startup=16, .active=1, .recover=38, .dmg=48, .kb=20, .y=80, .h=20, .ship=8, .cost=55, .anim=A_SUPER },
     }},
 };
 

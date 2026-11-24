@@ -627,8 +627,8 @@ static void draw_shot(const Shot *s)
     }
 }
 
-/* A ship or pack move with spin drops the fighter's shot icon (Stephen's baseballs)
-   instead of the generic bomb. It still explodes on impact. */
+/* A ship/pack/rain/bomb move with spin drops the fighter's shot icon (Stephen's
+   baseballs, Santa's gift bombs) instead of the generic bomb. Still explodes. */
 static int bomb_is_ball(const Shot *s)
 {
     int ch = -1;
@@ -638,7 +638,7 @@ static int bomb_is_ball(const Shot *s)
         return 0;
     for (int k = 0; k < MAXMOVES && chars[ch].moves[k].name; k++) {
         const Move *m = &chars[ch].moves[k];
-        if (m->spin && (m->ship || m->pack || m->rain))
+        if (m->spin && (m->ship || m->pack || m->rain || m->bomb))
             return 1;
     }
     return 0;
