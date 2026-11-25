@@ -377,8 +377,10 @@ static void parse(char *s)
             f->slot = num(&s); f->ch = num(&s); f->x = num(&s); f->y = num(&s);
             f->hp = num(&s); f->lives = num(&s); f->meter = num(&s);
             f->face = num(&s); f->st = num(&s); f->invis = num(&s);
+            f->eat = num(&s);
             if (f->ch < 0 || f->ch >= NCHARS) f->ch = 0;
             if (f->slot < 0 || f->slot >= MAX_PLAYERS) f->slot = 0;
+            if (f->eat < -1 || f->eat >= MAX_PLAYERS) f->eat = -1;
         } else if (k == 'Q') {
             Q.vx = num(&s); Q.vy = num(&s); Q.frame = num(&s); Q.stun = num(&s);
             Q.grace = num(&s); Q.invis = num(&s); Q.hit = num(&s); Q.fuel = num(&s);

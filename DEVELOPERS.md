@@ -241,10 +241,11 @@ Client to server, one datagram each:
 
 Server to client: `S tick winner ack {P ...}... Q ... {J|B|Z|X ...}...`
 
-- `P slot ch x y hp lives meter face state invis` for each fighter in the match
+- `P slot ch x y hp lives meter face state invis eat` for each fighter in the match
 - `Q vx vy frame stun grace invis_ticks hit fuel` for the viewer's own extra state
 - `J` shot, `B` bomb, `Z` ship, `X` explosion
 - `state`: `>= 0` attacking (move index), `-1` idle, `-2` stunned, `-3` blocking, `-4` flying, `-5` crouching
+- `eat`: gulp victim slot while digesting, else `-1` (client draws them in the mouth)
 - invisible opponents have their x, y and state hidden
 
 Clients should ignore any snapshot whose `tick` is not newer than the last one applied. `ack` reports how many of

@@ -138,6 +138,26 @@ static int is_gulp_st(int ch, int st)
     return m->name && m->gulp;
 }
 
+/* Sheet row offset for a character's gulp move (A_SPECIAL → 7). */
+static int gulp_move_row(int ch)
+{
+    if (ch < 0 || ch >= NCHARS)
+        return 7;
+    for (int k = 0; k < MAXMOVES && chars[ch].moves[k].name; k++)
+        if (chars[ch].moves[k].gulp)
+            return move_row(&chars[ch].moves[k]);
+    return 7;
+}
+
+/* Snapshot fighter for a slot, or NULL. */
+static const Fig *fig_by_slot(int slot)
+{
+    for (int i = 0; i < nf; i++)
+        if (F[i].slot == slot)
+            return &F[i];
+    return NULL;
+}
+
 /* True if this move is a player-steered rocket-pack flight. */
 static int is_pack_st(int ch, int st)
 {
@@ -329,15 +349,13 @@ static void pick(const Fig *f, int *row, int *col)
             else if (t < S) *col = 2;
             else *col = 3;
         } else if (m->gulp) {
-            /* Lean over → gulp → keep swallowing while the foe is inside. */
+            /* Lean over → gulp → chew while the foe is inside. */
             int S = m->startup > 0 ? m->startup : 1;
             int t = a->t;
-            if (t < S / 2) *col = 1;
-            else if (t < S) *col = 2;
-            else if (hasq && f->slot == me && Q.frame >= 1 && Q.frame <= 4)
-                *col = Q.frame; /* server pose during digest */
+            if (f->eat < 0 && t < S / 2) *col = 1;
+            else if (f->eat < 0 && t < S) *col = 2;
             else
-                *col = 2 + ((t / 6) % 2); /* swallow loop */
+                *col = 1 + ((aclk / 4) % 4); /* chew cycle across gulp cells */
         } else if (m->ride && m->anim == A_SUPER) {
             /* Dance/ride supers: cycle the mid cells so the dash reads as spinning. */
             int S = m->startup > 0 ? m->startup : 1;
@@ -360,6 +378,11 @@ static void pick(const Fig *f, int *row, int *col)
             else if (t < S + A + R / 2) *col = 2;
             else *col = 4;
         } else *col = move_frame(m, a->t);
+    }
+    else if (f->eat >= 0) {
+        /* Digest after the gulp move ends: keep chewing while walking / idle / air. */
+        *row = ROW_MOVE + gulp_move_row(f->ch);
+        *col = 1 + ((aclk / 4) % 4);
     }
     else if (f->y > 0) {
         *row = ROW_JUMP;
@@ -465,6 +488,37 @@ static float draw_cmd_arrows(float x, float y, int cmd, int face)
     return x - ox;
 }
 
+/* Legs/feet of a swallowed fighter hanging out of the gulper's mouth. */
+static void draw_eaten_feet(const Fig *f, float mouth_x, float mouth_y, float cs)
+{
+    const Fig *vic = fig_by_slot(f->eat);
+    int vch = (vic && vic->ch >= 0 && vic->ch < NCHARS) ? vic->ch : 0;
+    SDL_Texture *vt = tex[vch];
+    int phase = (int)((aclk / 4) % 4);
+    float wiggle = (phase == 1) ? 5.0f : (phase == 3) ? -4.0f : (phase == 2) ? 2.0f : -1.0f;
+    float leg_len = cs * 0.62f;
+    float leg_thk = cs * 0.34f;
+    /* Stick out in facing direction; chew wiggle pumps the legs. */
+    float cx = mouth_x + f->face * (leg_len * 0.42f + wiggle * 0.35f);
+    float cy = mouth_y + wiggle * 0.25f;
+    if (vt) {
+        /* Bottom of the idle cell = boots / lower legs. */
+        float top = SPR_CELL * 0.58f;
+        SDL_FRect vsrc = { 0, ROW_IDLE * SPR_CELL + top, (float)SPR_CELL, SPR_CELL - top };
+        SDL_FRect vdst = { cx - leg_len * 0.5f, cy - leg_thk * 0.5f, leg_len, leg_thk };
+        double ang = f->face > 0 ? (-88.0 + wiggle) : (88.0 - wiggle);
+        SDL_SetTextureAlphaMod(vt, 255);
+        SDL_SetTextureColorMod(vt, 255, 255, 255);
+        SDL_RenderTextureRotated(renderer, vt, &vsrc, &vdst, ang, NULL, SDL_FLIP_NONE);
+    } else {
+        const Uint8 *vc = pal[f->eat % MAX_PLAYERS];
+        float fx = f->face > 0 ? mouth_x : mouth_x - leg_len;
+        box(fx, cy - leg_thk * 0.25f, leg_len, leg_thk * 0.35f, vc[0], vc[1], vc[2], 255);
+        box(fx + (f->face > 0 ? leg_len - 14.0f : 0.0f), cy - 4.0f, 14.0f, 12.0f,
+            vc[0], vc[1], vc[2], 255);
+    }
+}
+
 /* Draw a fighter using a sprite sheet */
 static void draw_sprite(const Fig *f, SDL_Texture *t)
 {
@@ -474,15 +528,29 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
 
     float cs = c->h * SCALE * SPR_CELL / SPR_FIGH;      /* on-screen cell size */
     float xc = f->x * SCALE;
+    /* Chewing: squash / stretch the body so the jaw reads while digesting. */
+    float chew_h = 1.0f, chew_w = 1.0f;
+    if (f->eat >= 0) {
+        int phase = (int)((aclk / 4) % 4);
+        if (phase == 0) { chew_h = 0.90f; chew_w = 1.06f; }      /* bite down */
+        else if (phase == 1) { chew_h = 1.05f; chew_w = 0.96f; } /* open */
+        else if (phase == 2) { chew_h = 0.93f; chew_w = 1.04f; }
+        else { chew_h = 1.03f; chew_w = 0.98f; }
+    }
+    float draw_cs = cs * chew_w;
+    float draw_h = cs * chew_h;
     SDL_FRect src = { col * SPR_CELL, row * SPR_CELL, SPR_CELL, SPR_CELL };
-    SDL_FRect dst = { xc - cs * (f->face > 0 ? SPR_CX : SPR_CELL - SPR_CX) / SPR_CELL,
-                      GROUND - f->y * SCALE - cs, cs, cs };
+    SDL_FRect dst = { xc - draw_cs * (f->face > 0 ? SPR_CX : SPR_CELL - SPR_CX) / SPR_CELL,
+                      GROUND - f->y * SCALE - draw_h, draw_cs, draw_h };
 
     SDL_FlipMode flip = f->face < 0 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
 
     SDL_SetTextureAlphaMod(t, f->invis ? 90 : 255);
     if (f->st == -2 || f->st == -7 || f->st == -8) SDL_SetTextureColorMod(t, 255, 140, 140);
     else SDL_SetTextureColorMod(t, 255, 255, 255);
+
+    float mouth_x = xc + f->face * cs * 0.32f;
+    float mouth_y = dst.y + draw_h * 0.30f;
 
     /* Pack ship cell: left half = bat jetpack (back), right half = pitching machine (hands).
        Always sample those source halves; SDL flip mirrors them when facing left. */
@@ -511,14 +579,16 @@ static void draw_sprite(const Fig *f, SDL_Texture *t)
         SDL_RenderTextureRotated(renderer, t, &msrc, &mdst, 0, NULL, flip);
     }
 
+    /* Feet hang out of the mouth (drawn on top so soles stay visible while chewing). */
+    if (f->eat >= 0)
+        draw_eaten_feet(f, mouth_x, mouth_y, cs);
+
     /* Toadie tongue whip: stretch a pink tongue from the mouth to the stage edge. */
     if (is_tongue_whip(f->ch, f->st)) {
         const Move *m = &c->moves[f->st];
         const Anim *a = &an[f->slot];
         int S = m->startup > 0 ? m->startup : 1;
         int A = m->active > 0 ? m->active : 1;
-        float mouth_x = xc + f->face * cs * 0.32f;
-        float mouth_y = dst.y + cs * 0.30f;
         float end_x = f->face > 0 ? (float)SW : 0.0f;
         float full = end_x - mouth_x;
         float extend;

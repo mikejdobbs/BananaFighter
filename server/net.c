@@ -88,13 +88,13 @@ static void finish_client_crypto(int i, const char *k_line)
 
 /* Select screen (TCP): "L {U slot char ready bot}..."   (bot = 0 for humans,
    else AI index + 1) Match (UDP): "S tick winner ack {P slot ch x y hp lives
-   meter face state invis}... Q vx vy frame stun grace invis_ticks hit fuel {J
-   owner x y}... {B owner x y}... {Z owner x vx}... {X x y t}..." state: >= 0
+   meter face state invis eat}... Q vx vy frame stun grace invis_ticks hit fuel
+   {J owner x y}... {B owner x y}... {Z owner x vx}... {X x y t}..." state: >= 0
    attacking (move index), -1 idle, -2 hitstun, -3 blocking, -4 flying, -5
    crouching, -6 crouching and blocking, -7 knocked down, -8 getting up from a trip.
-   J = shot, B = bomb, Z = ship, X = explosion. Q (viewer's own extra
-   state) lets the client resume simulation. Invisible opponents have x, y and
-   state hidden. */
+   eat: gulp victim slot while digesting, else -1. J = shot, B = bomb, Z = ship,
+   X = explosion. Q (viewer's own extra state) lets the client resume simulation.
+   Invisible opponents have x, y and state hidden. */
 
 void send_state(int v) {
     char buf[UDP_PKT_MAX];
@@ -132,11 +132,16 @@ void send_state(int v) {
                    : p->body.crouch ? -5
                    : -1;
             
+            /* Who this fighter is gulping (-1 if none). Clients draw the victim in-mouth. */
+            int eat = (p->carry_t > 0 && p->carry_move && p->carry_move->gulp)
+                          ? p->carry_slot
+                          : -1;
+
             n += snprintf(buf + n, sizeof buf - n,
-                          " P %d %d %d %d %d %d %d %d %d %d", k, p->s_character,
+                          " P %d %d %d %d %d %d %d %d %d %d %d", k, p->s_character,
                           hide ? -1 : p->body.x, hide ? -1 : p->body.y, p->hp,
                           p->lives, p->body.meter, p->body.face, hide ? -1 : st,
-                          p->body.invis > 0);
+                          p->body.invis > 0, eat);
         }
 
         // show player their stats

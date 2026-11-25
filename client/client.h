@@ -80,6 +80,7 @@ enum {
 
 typedef struct {
   int slot, ch, x, y, hp, lives, meter, face, st, invis;
+  int eat; /* gulp victim slot while digesting, else -1 */
 } Fig;
 typedef struct {
   int slot, ch, ready, bot;

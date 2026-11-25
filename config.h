@@ -2,7 +2,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define BF_VERSION    "1.0.7"   /* client/server must match (handshake V line) */
+#define BF_VERSION    "1.0.8"   /* client/server must match (handshake V line) */
 #define PORT          7777
 #define DISCOVER_PORT (PORT + 1) /* LAN server beacon (UDP broadcast) */
 #define DISCOVER_MAGIC "BFDISC"
